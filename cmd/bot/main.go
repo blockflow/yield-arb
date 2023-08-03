@@ -12,4 +12,7 @@ func main() {
 		panic(err)
 	}
 	p.Connect("ethereum")
+	tokens, _ := p.GetLendingTokens()
+	lendingAPYs, _ := p.GetLendingAPYs(tokens)
+	log.Println(lendingAPYs)
 }
