@@ -1,5 +1,7 @@
 # yield-arb
 
+Lending and borrowing are separated by design to allow for deposit only protocols (ex. AMM).
+
 ## Notes
 
 Modules -> Packages -> Files

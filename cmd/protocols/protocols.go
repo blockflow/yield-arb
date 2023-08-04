@@ -16,21 +16,29 @@ type Protocol interface {
 	// Returns the tokens supported by the protocol on the specified chain
 	// Tokens are represented as their symbols
 	GetBorrowingTokens() ([]string, error)
-	// Returns the APYs for the specified tokens
+	// Returns the TokenSpecs for the specified tokens
 	// Tokens are represented as their symbols
-	GetLendingAPYs(tokens []string) (map[string]*big.Float, error)
-	// Returns the APYs for the specified tokens
+	GetLendingSpecs(symbols []string) ([]*TokenSpecs, error)
+	// Returns the TokenSpecs for the specified tokens
 	// Tokens are represented as their symbols
-	GetBorrowingAPYs(tokens []string) (map[string]*big.Float, error)
+	GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error)
 	// Returns the markets for the protocol
 	GetMarkets() (ProtocolMarkets, error)
 }
 
 type ProtocolMarkets struct {
-	Protocol      string                `json:"protocol"`
-	Chain         string                `json:"chain"`
-	LendingAPYs   map[string]*big.Float `json:"lendingAPYs"`
-	BorrowingAPYs map[string]*big.Float `json:"borrowingAPYs"`
+	Protocol       string        `json:"protocol"`
+	Chain          string        `json:"chain"`
+	LendingSpecs   []*TokenSpecs `json:"lendingSpecs"`
+	BorrowingSpecs []*TokenSpecs `json:"borrowingSpecs"`
+}
+
+type TokenSpecs struct {
+	Protocol string     `json:"protocol"`
+	Chain    string     `json:"chain"`
+	Token    string     `json:"token"`
+	LTV      *big.Float `json:"ltv"` // 0 if cannot be collateral
+	APY      *big.Float `json:"apy"`
 }
 
 func GetProtocol(protocol string) (Protocol, error) {

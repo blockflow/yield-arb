@@ -22,13 +22,13 @@ func main() {
 	// log.Println(lendingAPYs)
 
 	ethereumPMs, _ := p.GetMarkets()
-	p.Connect("polygon")
-	polygonPMs, _ := p.GetMarkets()
+	// p.Connect("polygon")
+	// polygonPMs, _ := p.GetMarkets()
 	p.Connect("avalanche")
 	avalanchePMs, _ := p.GetMarkets()
 
 	strats, _ := arbitrage.CalculateStrategies([]*protocols.ProtocolMarkets{
-		&ethereumPMs, &polygonPMs, &avalanchePMs,
+		&ethereumPMs, &avalanchePMs,
 	})
 	for _, strat := range strats[:5] {
 		log.Println()

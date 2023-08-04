@@ -16,20 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-// TODO: Map tokens to their addresses on different chains
 // TODO: Add notifications for when config changes
-
-var rpcEndpoints = map[string]string{
-	"ethereum":  "https://eth-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
-	"polygon":   "https://polygon-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
-	"avalanche": "https://rpc.ankr.com/avalanche",
-}
-
-var addressesProviders = map[string]string{
-	"ethereum":  "0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5",
-	"polygon":   "0xd05e3E715d945B59290df0ae8eF85c1BdB684744",
-	"avalanche": "0xb6A86025F0FE1862B372cb0ca18CE3EDe02A318f",
-}
 
 type AaveV2 struct {
 	chain               string
@@ -59,6 +46,20 @@ type ReserveDataOutput struct {
 	Output AaveV2ReserveData
 }
 
+const ProtocolName = "aavev2"
+
+var rpcEndpoints = map[string]string{
+	"ethereum":  "https://eth-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
+	"polygon":   "https://polygon-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
+	"avalanche": "https://rpc.ankr.com/avalanche",
+}
+
+var addressesProviders = map[string]string{
+	"ethereum":  "0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5",
+	"polygon":   "0xd05e3E715d945B59290df0ae8eF85c1BdB684744",
+	"avalanche": "0xb6A86025F0FE1862B372cb0ca18CE3EDe02A318f",
+}
+
 func NewAaveV2Protocol() *AaveV2 {
 	return &AaveV2{}
 }
@@ -86,7 +87,7 @@ func (a *AaveV2) Connect(chain string) error {
 	// Load addresses provider abi
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(filename)
-	path := filepath.Join(dir, "abis", "aavev2", "addresses_provider.json")
+	path := filepath.Join(dir, "abis", ProtocolName, "addresses_provider.json")
 	rawABI, err := os.Open(path)
 	if err != nil {
 		log.Printf("Failed to open addresses_provider.json: %v", err)
@@ -113,7 +114,7 @@ func (a *AaveV2) Connect(chain string) error {
 	}
 
 	// Instantiate lending pool
-	rawLendingPoolABI, err := os.Open(filepath.Join(dir, "abis", "aavev2", "lending_pool.json"))
+	rawLendingPoolABI, err := os.Open(filepath.Join(dir, "abis", ProtocolName, "lending_pool.json"))
 	if err != nil {
 		log.Printf("Failed to open lending_pool.json: %v", err)
 		return err
@@ -171,6 +172,7 @@ func (a *AaveV2) GetBorrowingTokens() ([]string, error) {
 	return a.getReservesList()
 }
 
+// Get ReserveData directly from smart contract
 func (a *AaveV2) getReserveData(token string) (*AaveV2ReserveData, error) {
 	result := []interface{}{new(ReserveDataOutput)}
 	callOpts := &bind.CallOpts{}
@@ -193,9 +195,8 @@ func convertRayToPercentage(ray *big.Int) *big.Float {
 	return rayAsFloat
 }
 
-// TODO: Filter out paused tokens
-// GetLendingAPYs returns the lending APYs for the given tokens
-func (a *AaveV2) GetLendingAPYs(symbols []string) (map[string]*big.Float, error) {
+// Get the lending TokenSpecs for the specified tokens. Filters out paused tokens.
+func (a *AaveV2) getTokenSpecs(symbols []string, getAPY func(*AaveV2ReserveData) *big.Int) ([]*TokenSpecs, error) {
 	addresses, err := tokens.ConvertSymbolsToAddresses(a.chain, symbols)
 	if err != nil {
 		log.Printf("Failed to convert symbols to addresses: %v", err)
@@ -206,42 +207,55 @@ func (a *AaveV2) GetLendingAPYs(symbols []string) (map[string]*big.Float, error)
 		return nil, err
 	}
 
-	lendingAPYs := make(map[string]*big.Float)
+	var tokenSpecs []*TokenSpecs
 	for i, address := range addresses {
 		reserveData, err := a.getReserveData(address)
 		if err != nil {
 			log.Printf("Failed to fetch reserve data: %v", err)
 			return nil, err
 		}
-		liquidtyRate := convertRayToPercentage(reserveData.CurrentLiquidityRate)
-		lendingAPYs[symbols[i]] = liquidtyRate
+
+		// Check if paused
+		config := new(big.Int).Rsh(reserveData.Configurationstruct.Data, 58)
+		config = config.And(config, big.NewInt(1))
+		borrowingEnabled := config.Uint64() == 1
+		if !borrowingEnabled {
+			continue
+		}
+
+		// Calculate LTV in percentage
+		mask := big.NewInt(0xFFFF)                                             // 16-bit mask
+		ltvInt := new(big.Int).And(reserveData.Configurationstruct.Data, mask) // mask
+		ltv := new(big.Float).SetInt(ltvInt)                                   // convert to float
+		ltv.Quo(ltv, big.NewFloat(100))                                        // convert to percentage
+
+		// Get the lending/borrowing rate
+		liquidtyRate := convertRayToPercentage(getAPY(reserveData))
+		tokenSpecs = append(tokenSpecs, &TokenSpecs{
+			Protocol: ProtocolName,
+			Chain:    a.chain,
+			Token:    symbols[i],
+			LTV:      ltv,
+			APY:      liquidtyRate,
+		})
 	}
-	return lendingAPYs, nil
+	return tokenSpecs, nil
 }
 
-// GetBorrowingAPYs returns the variable borrowing APYs for the given tokens
-func (a *AaveV2) GetBorrowingAPYs(symbols []string) (map[string]*big.Float, error) {
-	addresses, err := tokens.ConvertSymbolsToAddresses(a.chain, symbols)
-	if err != nil {
-		log.Printf("Failed to convert symbols to addresses: %v", err)
-		return nil, err
-	}
-	if len(addresses) != len(symbols) {
-		log.Printf("%v tokens lost during conversion", len(symbols)-len(addresses))
-		return nil, err
-	}
+func getLendingAPY(rd *AaveV2ReserveData) *big.Int {
+	return rd.CurrentLiquidityRate
+}
 
-	borrowingAPYs := make(map[string]*big.Float)
-	for i, address := range addresses {
-		reserveData, err := a.getReserveData(address)
-		if err != nil {
-			log.Printf("Failed to fetch reserve data: %v", err)
-			return nil, err
-		}
-		variableBorrowRate := convertRayToPercentage(reserveData.CurrentVariableBorrowRate)
-		borrowingAPYs[symbols[i]] = variableBorrowRate
-	}
-	return borrowingAPYs, nil
+func getBorrowingAPY(rd *AaveV2ReserveData) *big.Int {
+	return rd.CurrentVariableBorrowRate
+}
+
+func (a *AaveV2) GetLendingSpecs(symbols []string) ([]*TokenSpecs, error) {
+	return a.getTokenSpecs(symbols, getLendingAPY)
+}
+
+func (a *AaveV2) GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error) {
+	return a.getTokenSpecs(symbols, getBorrowingAPY)
 }
 
 // Returns the market.
@@ -249,13 +263,13 @@ func (a *AaveV2) GetBorrowingAPYs(symbols []string) (map[string]*big.Float, erro
 func (a *AaveV2) GetMarkets() (ProtocolMarkets, error) {
 	log.Printf("Fetching market data for %v...", a.chain)
 	lendingTokens, _ := (*a).GetLendingTokens()
-	lendingAPYs, _ := (*a).GetLendingAPYs(lendingTokens)
-	borrowingAPYs, _ := (*a).GetBorrowingAPYs(lendingTokens)
+	lendingSpecs, _ := (*a).GetLendingSpecs(lendingTokens)
+	borrowingSpecs, _ := (*a).GetBorrowingSpecs(lendingTokens)
 
 	return ProtocolMarkets{
-		Protocol:      "aavev2",
-		Chain:         a.chain,
-		LendingAPYs:   lendingAPYs,
-		BorrowingAPYs: borrowingAPYs,
+		Protocol:       ProtocolName,
+		Chain:          a.chain,
+		LendingSpecs:   lendingSpecs,
+		BorrowingSpecs: borrowingSpecs,
 	}, nil
 }
