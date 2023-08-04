@@ -2,7 +2,7 @@ package main
 
 import (
 	"log"
-	"yield-arb/pkg/protocols"
+	"yield-arb/cmd/protocols"
 )
 
 func main() {
@@ -12,7 +12,10 @@ func main() {
 		panic(err)
 	}
 	p.Connect("ethereum")
-	tokens, _ := p.GetLendingTokens()
-	lendingAPYs, _ := p.GetLendingAPYs(tokens)
+
+	symbols, _ := p.GetLendingTokens()
+	log.Println(symbols)
+
+	lendingAPYs, _ := p.GetLendingAPYs(symbols)
 	log.Println(lendingAPYs)
 }

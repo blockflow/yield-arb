@@ -3,10 +3,12 @@ package protocols
 import (
 	"context"
 	"log"
+	"math"
 	"math/big"
 	"os"
 	"path/filepath"
 	"runtime"
+	"yield-arb/cmd/tokens"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -14,9 +16,11 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// TODO: Map tokens to their addresses on different chains
 // TODO: Add notifications for when config changes
 
-var addressesProviderETH common.Address = common.HexToAddress("0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5")
+var addressesProviderEthereum common.Address = common.HexToAddress("0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5")
+var addressesProviderPolygon common.Address = common.HexToAddress("0xd05e3E715d945B59290df0ae8eF85c1BdB684744")
 
 type AaveV2 struct {
 	chain               string
@@ -42,12 +46,16 @@ type AaveV2ReserveData struct {
 	ID                          uint8          `json:"id"`
 }
 
+type ReserveDataOutput struct {
+	Output AaveV2ReserveData
+}
+
 func NewAaveV2Protocol() *AaveV2 {
 	return &AaveV2{}
 }
 
 func (a *AaveV2) GetChains() ([]string, error) {
-	return []string{"ethereum"}, nil
+	return []string{"ethereum", "polygon", "avalanche"}, nil
 }
 
 func (a *AaveV2) Connect(chain string) error {
@@ -56,6 +64,13 @@ func (a *AaveV2) Connect(chain string) error {
 	switch chain {
 	case "ethereum":
 		_cl, clErr := ethclient.Dial("https://eth-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ")
+		if clErr != nil {
+			log.Printf("Failed to connect to the %v client: %v", chain, clErr)
+			return clErr
+		}
+		cl = _cl
+	case "polygon":
+		_cl, clErr := ethclient.Dial("https://polygon-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ")
 		if clErr != nil {
 			log.Printf("Failed to connect to the %v client: %v", chain, clErr)
 			return clErr
@@ -90,7 +105,9 @@ func (a *AaveV2) Connect(chain string) error {
 	var addressesProviderContract *bind.BoundContract
 	switch chain {
 	case "ethereum":
-		addressesProviderContract = bind.NewBoundContract(addressesProviderETH, parsedABI, cl, cl, cl)
+		addressesProviderContract = bind.NewBoundContract(addressesProviderEthereum, parsedABI, cl, cl, cl)
+	case "polygon":
+		addressesProviderContract = bind.NewBoundContract(addressesProviderPolygon, parsedABI, cl, cl, cl)
 	}
 
 	// Fetch lending pool address
@@ -124,6 +141,7 @@ func (a *AaveV2) Connect(chain string) error {
 	return nil
 }
 
+// Returns the symbols of the supported tokens
 func (a *AaveV2) getReservesList() ([]string, error) {
 	results := []interface{}{new([]common.Address)}
 	callOpts := &bind.CallOpts{}
@@ -135,12 +153,19 @@ func (a *AaveV2) getReservesList() ([]string, error) {
 	addresses := *results[0].(*[]common.Address)
 
 	// Convert to string
-	tokens := make([]string, len(addresses))
+	addressesString := make([]string, len(addresses))
 	for i, address := range addresses {
-		tokens[i] = address.Hex()
+		addressesString[i] = address.Hex()
 	}
 
-	return tokens, nil
+	// Convert to symbols
+	symbols, err := tokens.ConvertAddressesToSymbols(a.chain, addressesString)
+	if err != nil {
+		log.Printf("Failed to convert addresses to symbols: %v", err)
+		return nil, err
+	}
+
+	return symbols, nil
 }
 
 // GetLendingTokens returns the tokens that can be lent on the given chain
@@ -154,11 +179,7 @@ func (a *AaveV2) GetBorrowingTokens() ([]string, error) {
 }
 
 func (a *AaveV2) getReserveData(token string) (*AaveV2ReserveData, error) {
-	type ReserveDataOutput struct {
-		Output AaveV2ReserveData
-	}
 	result := []interface{}{new(ReserveDataOutput)}
-	// result := []interface{}{new(AaveV2ReserveData)}
 	callOpts := &bind.CallOpts{}
 	err := a.lendingPoolContract.Call(callOpts, &result, "getReserveData", common.HexToAddress(token))
 	if err != nil {
@@ -168,16 +189,64 @@ func (a *AaveV2) getReserveData(token string) (*AaveV2ReserveData, error) {
 	return &result[0].(*ReserveDataOutput).Output, nil
 }
 
-func (a *AaveV2) GetLendingAPYs(tokens []string) (map[string]float64, error) {
-	lendingAPYs := make(map[string]float64)
-	for _, token := range tokens {
-		reserveData, err := a.getReserveData(token)
+// Convert a big.Int ray to a percentage
+func convertRayToPercentage(ray *big.Int) *big.Float {
+	rayAsFloat := new(big.Float).SetInt(ray)
+	// Convert to 27 decimals
+	divisor := new(big.Float).SetFloat64(math.Pow10(27))
+	rayAsFloat.Quo(rayAsFloat, divisor)
+	// Convert to percentage
+	rayAsFloat.Mul(rayAsFloat, big.NewFloat(100))
+	return rayAsFloat
+}
+
+// TODO: Filter out paused tokens
+// GetLendingAPYs returns the lending APYs for the given tokens
+func (a *AaveV2) GetLendingAPYs(symbols []string) (map[string]*big.Float, error) {
+	addresses, err := tokens.ConvertSymbolsToAddresses(a.chain, symbols)
+	if err != nil {
+		log.Printf("Failed to convert symbols to addresses: %v", err)
+		return nil, err
+	}
+	if len(addresses) != len(symbols) {
+		log.Printf("%v tokens lost during conversion", len(symbols)-len(addresses))
+		return nil, err
+	}
+
+	lendingAPYs := make(map[string]*big.Float)
+	for i, address := range addresses {
+		reserveData, err := a.getReserveData(address)
 		if err != nil {
 			log.Printf("Failed to fetch reserve data: %v", err)
 			return nil, err
 		}
-		log.Println(token, reserveData)
-		lendingAPYs[token] = float64(reserveData.CurrentLiquidityRate.Int64()) / 1e27
+		liquidtyRate := convertRayToPercentage(reserveData.CurrentLiquidityRate)
+		lendingAPYs[symbols[i]] = liquidtyRate
 	}
 	return lendingAPYs, nil
+}
+
+// GetBorrowingAPYs returns the variable borrowing APYs for the given tokens
+func (a *AaveV2) GetBorrowingAPYs(symbols []string) (map[string]*big.Float, error) {
+	addresses, err := tokens.ConvertSymbolsToAddresses(a.chain, symbols)
+	if err != nil {
+		log.Printf("Failed to convert symbols to addresses: %v", err)
+		return nil, err
+	}
+	if len(addresses) != len(symbols) {
+		log.Printf("%v tokens lost during conversion", len(symbols)-len(addresses))
+		return nil, err
+	}
+
+	borrowingAPYs := make(map[string]*big.Float)
+	for i, address := range addresses {
+		reserveData, err := a.getReserveData(address)
+		if err != nil {
+			log.Printf("Failed to fetch reserve data: %v", err)
+			return nil, err
+		}
+		variableBorrowRate := convertRayToPercentage(reserveData.CurrentVariableBorrowRate)
+		borrowingAPYs[symbols[i]] = variableBorrowRate
+	}
+	return borrowingAPYs, nil
 }
