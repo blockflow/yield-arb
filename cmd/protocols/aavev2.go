@@ -19,8 +19,17 @@ import (
 // TODO: Map tokens to their addresses on different chains
 // TODO: Add notifications for when config changes
 
-var addressesProviderEthereum common.Address = common.HexToAddress("0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5")
-var addressesProviderPolygon common.Address = common.HexToAddress("0xd05e3E715d945B59290df0ae8eF85c1BdB684744")
+var rpcEndpoints = map[string]string{
+	"ethereum":  "https://eth-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
+	"polygon":   "https://polygon-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
+	"avalanche": "https://rpc.ankr.com/avalanche",
+}
+
+var addressesProviders = map[string]string{
+	"ethereum":  "0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5",
+	"polygon":   "0xd05e3E715d945B59290df0ae8eF85c1BdB684744",
+	"avalanche": "0xb6A86025F0FE1862B372cb0ca18CE3EDe02A318f",
+}
 
 type AaveV2 struct {
 	chain               string
@@ -60,22 +69,11 @@ func (a *AaveV2) GetChains() ([]string, error) {
 
 func (a *AaveV2) Connect(chain string) error {
 	// Setup the client
-	var cl *ethclient.Client
-	switch chain {
-	case "ethereum":
-		_cl, clErr := ethclient.Dial("https://eth-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ")
-		if clErr != nil {
-			log.Printf("Failed to connect to the %v client: %v", chain, clErr)
-			return clErr
-		}
-		cl = _cl
-	case "polygon":
-		_cl, clErr := ethclient.Dial("https://polygon-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ")
-		if clErr != nil {
-			log.Printf("Failed to connect to the %v client: %v", chain, clErr)
-			return clErr
-		}
-		cl = _cl
+	rpcEndpoint := rpcEndpoints[chain]
+	cl, err := ethclient.Dial(rpcEndpoint)
+	if err != nil {
+		log.Printf("Failed to connect to the %v client: %v", chain, err)
+		return err
 	}
 
 	// Fetch chainid
@@ -102,13 +100,8 @@ func (a *AaveV2) Connect(chain string) error {
 	}
 
 	// Instantiate addresses provider
-	var addressesProviderContract *bind.BoundContract
-	switch chain {
-	case "ethereum":
-		addressesProviderContract = bind.NewBoundContract(addressesProviderEthereum, parsedABI, cl, cl, cl)
-	case "polygon":
-		addressesProviderContract = bind.NewBoundContract(addressesProviderPolygon, parsedABI, cl, cl, cl)
-	}
+	addressesProvider := common.HexToAddress(addressesProviders[chain])
+	addressesProviderContract := bind.NewBoundContract(addressesProvider, parsedABI, cl, cl, cl)
 
 	// Fetch lending pool address
 	results := []interface{}{new(common.Address)}
@@ -249,4 +242,19 @@ func (a *AaveV2) GetBorrowingAPYs(symbols []string) (map[string]*big.Float, erro
 		borrowingAPYs[symbols[i]] = variableBorrowRate
 	}
 	return borrowingAPYs, nil
+}
+
+// Returns the market.
+// Assumes lending and borrowing tokens are the same.
+func (a *AaveV2) GetMarkets(p *Protocol) (ProtocolMarkets, error) {
+	lendingTokens, _ := (*p).GetLendingTokens()
+	lendingAPYs, _ := (*p).GetLendingAPYs(lendingTokens)
+	borrowingAPYs, _ := (*p).GetBorrowingAPYs(lendingTokens)
+
+	return ProtocolMarkets{
+		Protocol:      "aavev2",
+		Chain:         a.chain,
+		LendingAPYs:   lendingAPYs,
+		BorrowingAPYs: borrowingAPYs,
+	}, nil
 }

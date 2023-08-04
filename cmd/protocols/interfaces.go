@@ -19,4 +19,13 @@ type Protocol interface {
 	// Returns the APYs for the specified tokens
 	// Tokens are represented as their symbols
 	GetBorrowingAPYs(tokens []string) (map[string]*big.Float, error)
+	// Returns the markets for the protocol
+	GetMarkets(p *Protocol) (ProtocolMarkets, error)
+}
+
+type ProtocolMarkets struct {
+	Protocol      string                `json:"protocol"`
+	Chain         string                `json:"chain"`
+	LendingAPYs   map[string]*big.Float `json:"lendingAPYs"`
+	BorrowingAPYs map[string]*big.Float `json:"borrowingAPYs"`
 }

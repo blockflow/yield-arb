@@ -11,7 +11,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	p.Connect("ethereum")
+	p.Connect("avalanche")
 
 	symbols, _ := p.GetLendingTokens()
 	log.Println(symbols)

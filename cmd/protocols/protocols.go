@@ -1,6 +1,8 @@
 package protocols
 
-import "fmt"
+import (
+	"fmt"
+)
 
 func GetProtocol(protocol string) (Protocol, error) {
 	switch protocol {
