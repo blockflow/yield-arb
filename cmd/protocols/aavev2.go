@@ -246,10 +246,10 @@ func (a *AaveV2) GetBorrowingAPYs(symbols []string) (map[string]*big.Float, erro
 
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
-func (a *AaveV2) GetMarkets(p *Protocol) (ProtocolMarkets, error) {
-	lendingTokens, _ := (*p).GetLendingTokens()
-	lendingAPYs, _ := (*p).GetLendingAPYs(lendingTokens)
-	borrowingAPYs, _ := (*p).GetBorrowingAPYs(lendingTokens)
+func (a *AaveV2) GetMarkets() (ProtocolMarkets, error) {
+	lendingTokens, _ := (*a).GetLendingTokens()
+	lendingAPYs, _ := (*a).GetLendingAPYs(lendingTokens)
+	borrowingAPYs, _ := (*a).GetBorrowingAPYs(lendingTokens)
 
 	return ProtocolMarkets{
 		Protocol:      "aavev2",
