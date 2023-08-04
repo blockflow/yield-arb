@@ -1,9 +1,11 @@
-package tokens
+package utils
 
 import (
 	"encoding/json"
 	"io"
 	"log"
+	"math"
+	"math/big"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,6 +13,12 @@ import (
 
 type TokenMapping struct {
 	Tokens map[string]string `json:"tokens"`
+}
+
+var RPCEndpoints = map[string]string{
+	"ethereum":  "https://eth-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
+	"polygon":   "https://polygon-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
+	"avalanche": "https://rpc.ankr.com/avalanche",
 }
 
 func loadMapping(chain string) (*TokenMapping, error) {
@@ -81,4 +89,15 @@ func ConvertAddressesToSymbols(chain string, addresses []string) ([]string, erro
 	}
 
 	return result, nil
+}
+
+// Convert a big.Int ray to a percentage
+func ConvertRayToPercentage(ray *big.Int) *big.Float {
+	rayAsFloat := new(big.Float).SetInt(ray)
+	// Convert to 27 decimals
+	divisor := new(big.Float).SetFloat64(math.Pow10(27))
+	rayAsFloat.Quo(rayAsFloat, divisor)
+	// Convert to percentage
+	rayAsFloat.Mul(rayAsFloat, big.NewFloat(100))
+	return rayAsFloat
 }
