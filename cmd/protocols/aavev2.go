@@ -247,6 +247,7 @@ func (a *AaveV2) GetBorrowingAPYs(symbols []string) (map[string]*big.Float, erro
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
 func (a *AaveV2) GetMarkets() (ProtocolMarkets, error) {
+	log.Printf("Fetching market data for %v...", a.chain)
 	lendingTokens, _ := (*a).GetLendingTokens()
 	lendingAPYs, _ := (*a).GetLendingAPYs(lendingTokens)
 	borrowingAPYs, _ := (*a).GetBorrowingAPYs(lendingTokens)

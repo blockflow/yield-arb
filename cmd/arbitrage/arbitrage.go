@@ -1,6 +1,7 @@
 package arbitrage
 
 import (
+	"log"
 	"math/big"
 	"yield-arb/cmd/protocols"
 
@@ -31,6 +32,7 @@ func moreNetAPY(a, b []*TokenSpecs) bool {
 
 // Calculates the strategies and ranks them
 func CalculateStrategies(pms []*protocols.ProtocolMarkets) ([][]*TokenSpecs, error) {
+	log.Println("Calculating the best yield arb strategies...")
 	// Find best lend rates per token
 	maxTokenLendAPYs := make(map[string]*TokenSpecs)
 	for _, pm := range pms {
