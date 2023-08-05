@@ -59,6 +59,10 @@ var aavev3AddressesProviders = map[string]string{
 	// "harmony",
 	// "optimism",
 	// "metis",
+
+	// Testnets
+	"ethereum_goerli": "0xC911B590248d127aD18546B186cC6B324e99F02c",
+	"avalanche_fuji":  "0x220c6A7D868FC38ECB47d5E69b99e9906300286A",
 }
 
 func (a *AaveV3) GetChains() ([]string, error) {
@@ -259,6 +263,7 @@ func (a *AaveV3) GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error) {
 
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
+// TODO: Check for supply capped markets
 func (a *AaveV3) GetMarkets() (ProtocolMarkets, error) {
 	log.Printf("Fetching market data for %v...", a.chain)
 	lendingTokens, _ := (*a).GetLendingTokens()

@@ -15,7 +15,7 @@ func main() {
 
 	p, _ := protocols.GetProtocol("aavev3")
 
-	p.Connect("ethereum")
+	// p.Connect("ethereum")
 
 	// symbols, _ := p.GetLendingTokens()
 
@@ -25,17 +25,15 @@ func main() {
 	// lendingAPYs, _ := p.GetLendingAPYs(symbols)
 	// log.Println(lendingAPYs)
 
-	ethereumPMs, _ := p.GetMarkets()
-	p.Connect("polygon")
-	polygonPMs, _ := p.GetMarkets()
-	p.Connect("avalanche")
-	avalanchePMs, _ := p.GetMarkets()
-	p.Connect("arbitrum")
-	arbitrumPMs, _ := p.GetMarkets()
+	chains := []string{"ethereum_goerli", "avalanche_fuji"}
+	chainPMs := make([]*protocols.ProtocolMarkets, len(chains))
+	for i, chain := range chains {
+		p.Connect(chain)
+		pms, _ := p.GetMarkets()
+		chainPMs[i] = &pms
+	}
 
-	strats, _ := arbitrage.CalculateStrategies([]*protocols.ProtocolMarkets{
-		&ethereumPMs, &polygonPMs, &avalanchePMs, &arbitrumPMs,
-	})
+	strats, _ := arbitrage.CalculateStrategies(chainPMs)
 	for _, strat := range strats[:5] {
 		log.Println()
 		for _, spec := range strat {
