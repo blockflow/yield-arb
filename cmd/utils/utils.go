@@ -2,6 +2,8 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"math"
@@ -22,14 +24,30 @@ var RPCEndpoints = map[string]string{
 	"arbitrum":  "https://arb1.arbitrum.io/rpc",
 }
 
-func loadMapping(chain string) (*TokenMapping, error) {
+var TokenMappings = make(map[string]*TokenMapping)
+var TokenAliases *TokenMapping
+
+func init() {
+	for chain := range RPCEndpoints {
+		if err := loadMapping(chain); err != nil {
+			log.Printf("Failed to load %v mapping: %v", chain, err)
+		}
+	}
+
+	if err := loadAliases(); err != nil {
+		log.Printf("Failed to load aliases: %v", err)
+	}
+}
+
+// Loads token mappings into TokenMappings var
+func loadMapping(chain string) error {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(filename)
 	path := filepath.Join(dir, "mappings", chain+"_tokens.json")
 	rawMapping, err := os.Open(path)
 	if err != nil {
 		log.Printf("Failed to open token mapping: %v", err)
-		return nil, err
+		return err
 	}
 	defer rawMapping.Close()
 	var parsedMapping TokenMapping
@@ -40,18 +58,47 @@ func loadMapping(chain string) (*TokenMapping, error) {
 	err = json.Unmarshal(readMapping, &parsedMapping)
 	if err != nil {
 		log.Printf("Failed to parse token mapping: %v", err)
-		return nil, err
+		return err
 	}
-	return &parsedMapping, nil
+
+	TokenMappings[chain] = &parsedMapping
+	return nil
+}
+
+// Loads the alias mapping into TokenAliases var
+func loadAliases() error {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := filepath.Dir(filename)
+	path := filepath.Join(dir, "mappings", "token_aliases.json")
+	rawMapping, err := os.Open(path)
+	if err != nil {
+		log.Printf("Failed to open token aliases: %v", err)
+		return err
+	}
+	defer rawMapping.Close()
+	var parsedMapping TokenMapping
+	readMapping, err := io.ReadAll(rawMapping)
+	if err != nil {
+		log.Printf("Failed to read token aliases: %v", err)
+	}
+	err = json.Unmarshal(readMapping, &parsedMapping)
+	if err != nil {
+		log.Printf("Failed to parse token aliases: %v", err)
+		return err
+	}
+
+	TokenAliases = &parsedMapping
+	return nil
 }
 
 // Converts the token symbols to their respective addresses for the specified chain
 // If not mapped, token will be excluded.
 func ConvertSymbolsToAddresses(chain string, symbols []string) ([]string, error) {
-	mapping, err := loadMapping(chain)
-	if err != nil {
-		log.Printf("Failed to load mapping: %v", err)
-		return nil, err
+	mapping, ok := TokenMappings[chain]
+	if !ok {
+		msg := fmt.Sprintf("Could not find %v mapping", chain)
+		log.Println(msg)
+		return nil, errors.New(msg)
 	}
 
 	var result []string
@@ -68,10 +115,11 @@ func ConvertSymbolsToAddresses(chain string, symbols []string) ([]string, error)
 // Converts the token addresses to their respective symbols for the specified chain
 // If not mapped, token will be excluded.
 func ConvertAddressesToSymbols(chain string, addresses []string) ([]string, error) {
-	mapping, err := loadMapping(chain)
-	if err != nil {
-		log.Printf("Failed to load mapping: %v", err)
-		return nil, err
+	mapping, ok := TokenMappings[chain]
+	if !ok {
+		msg := fmt.Sprintf("Could not find %v mapping", chain)
+		log.Println(msg)
+		return nil, errors.New(msg)
 	}
 
 	// Reverse mapping O(tokens)
