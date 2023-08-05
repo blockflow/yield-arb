@@ -63,7 +63,7 @@ func (a *AaveV2) GetChains() ([]string, error) {
 
 func (a *AaveV2) Connect(chain string) error {
 	// Setup the client
-	rpcEndpoint := utils.RPCEndpoints[chain]
+	rpcEndpoint := utils.ChainConfigs[chain].RPCEndpoint
 	cl, err := ethclient.Dial(rpcEndpoint)
 	if err != nil {
 		log.Printf("Failed to connect to the %v client: %v", chain, err)
@@ -255,3 +255,17 @@ func (a *AaveV2) GetMarkets() (ProtocolMarkets, error) {
 		BorrowingSpecs: borrowingSpecs,
 	}, nil
 }
+
+// // Deposits the specified token into the protocol
+// func (a *AaveV2) Deposit(user string, token string, amount *big.Int) error {
+// 	type AaveV2Deposit
+// 	// TODO: Check allowance
+// 	result := []interface{}{new(AaveV2ReserveDataOutput)}
+// 	callOpts := &bind.CallOpts{}
+// 	err := a.lendingPoolContract.Call(callOpts, &result, "getReserveData", common.HexToAddress(token))
+// 	if err != nil {
+// 		log.Printf("Failed to fetch reserve data: %v", err)
+// 		return nil, err
+// 	}
+// 	return &result[0].(*AaveV2ReserveDataOutput).Output, nil
+// }

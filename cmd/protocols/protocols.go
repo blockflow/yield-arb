@@ -24,6 +24,18 @@ type Protocol interface {
 	GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error)
 	// Returns the markets for the protocol
 	GetMarkets() (ProtocolMarkets, error)
+
+	// // Lends the token to the protocol
+	// Deposit(user string, token string, amount *big.Int) error
+	// // Withdraws the token from the protocol
+	// Withdraw(user string, token string, amount *big.Int) error
+	// // Borrows the token from the protocol
+	// Borrow(user string, token string, amount *big.Int) error
+	// // Repays the token to the protocol
+	// Repay(user string, token string, amount *big.Int) error
+
+	// // Fetches the user's positions and leverage
+	// GetAccountData(user string)
 }
 
 type ProtocolMarkets struct {
@@ -39,6 +51,15 @@ type TokenSpecs struct {
 	Token    string     `json:"token"`
 	LTV      *big.Float `json:"ltv"` // 0 if cannot be collateral
 	APY      *big.Float `json:"apy"`
+}
+
+type AccountData struct {
+	TotalCollateralBase         *big.Int `json:"totalCollateralBase"`
+	TotalDebtBase               *big.Int `json:"totalDebtBase"`
+	AvailableBorrowsBase        *big.Int `json:"availableBorrowsBase"`
+	CurrentLiquidationThreshold *big.Int `json:"currentLiquidationThreshold"`
+	LTV                         *big.Int `json:"ltv"`
+	HealthFactor                *big.Int `json:"healthFactor"`
 }
 
 func GetProtocol(protocol string) (Protocol, error) {

@@ -1,4 +1,5 @@
 {
+    "rpcEndpoint": "https://rpc.ankr.com/avalanche",
     "tokens": {
         "DAI.e": "0xd586E7F844cEa2F87f50152665BCbc2C279D8d70",
         "USDC.e": "0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664",

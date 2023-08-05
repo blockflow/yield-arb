@@ -11,57 +11,58 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
-type TokenMapping struct {
-	Tokens map[string]string `json:"tokens"`
+type ChainConfig struct {
+	RPCEndpoint string            `json:"rpcEndpoint"`
+	Tokens      map[string]string `json:"tokens"`
 }
 
-var RPCEndpoints = map[string]string{
-	"ethereum":  "https://eth-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
-	"polygon":   "https://polygon-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
-	"avalanche": "https://rpc.ankr.com/avalanche",
-	"arbitrum":  "https://arb1.arbitrum.io/rpc",
-}
-
-var TokenMappings = make(map[string]*TokenMapping)
-var TokenAliases *TokenMapping
+var ChainConfigs = make(map[string]*ChainConfig)
+var TokenAliases map[string]string
 
 func init() {
-	for chain := range RPCEndpoints {
-		if err := loadMapping(chain); err != nil {
-			log.Printf("Failed to load %v mapping: %v", chain, err)
+	// Parse all config json files
+	_, filename, _, _ := runtime.Caller(0)
+	currentDir := filepath.Dir(filename)
+	configPath := filepath.Join(currentDir, "configs")
+	configDir, _ := os.ReadDir(configPath)
+	for _, config := range configDir {
+		log.Printf("Loading %v...", config.Name())
+		if err := loadConfig(config.Name()); err != nil {
+			log.Printf("Failed to load %v: %v", config.Name(), err)
 		}
 	}
-
+	log.Println("Loading token aliases...")
 	if err := loadAliases(); err != nil {
 		log.Printf("Failed to load aliases: %v", err)
 	}
 }
 
-// Loads token mappings into TokenMappings var
-func loadMapping(chain string) error {
+// Loads the chain config including rpc endpoint and token mappings.
+func loadConfig(configName string) error {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(filename)
-	path := filepath.Join(dir, "mappings", chain+"_tokens.json")
-	rawMapping, err := os.Open(path)
+	path := filepath.Join(dir, "configs", configName)
+	rawConfig, err := os.Open(path)
 	if err != nil {
-		log.Printf("Failed to open token mapping: %v", err)
+		log.Printf("Failed to open config: %v", err)
 		return err
 	}
-	defer rawMapping.Close()
-	var parsedMapping TokenMapping
-	readMapping, err := io.ReadAll(rawMapping)
+	defer rawConfig.Close()
+	var parsedConfig ChainConfig
+	readConfig, err := io.ReadAll(rawConfig)
 	if err != nil {
-		log.Printf("Failed to read token mapping: %v", err)
+		log.Printf("Failed to read config: %v", err)
 	}
-	err = json.Unmarshal(readMapping, &parsedMapping)
+	err = json.Unmarshal(readConfig, &parsedConfig)
 	if err != nil {
-		log.Printf("Failed to parse token mapping: %v", err)
+		log.Printf("Failed to parse config: %v", err)
 		return err
 	}
 
-	TokenMappings[chain] = &parsedMapping
+	ChainConfigs[strings.TrimSuffix(configName, ".json")] = &parsedConfig
 	return nil
 }
 
@@ -76,7 +77,7 @@ func loadAliases() error {
 		return err
 	}
 	defer rawMapping.Close()
-	var parsedMapping TokenMapping
+	var parsedMapping = make(map[string]string)
 	readMapping, err := io.ReadAll(rawMapping)
 	if err != nil {
 		log.Printf("Failed to read token aliases: %v", err)
@@ -87,23 +88,23 @@ func loadAliases() error {
 		return err
 	}
 
-	TokenAliases = &parsedMapping
+	TokenAliases = parsedMapping
 	return nil
 }
 
 // Converts the token symbols to their respective addresses for the specified chain
 // If not mapped, token will be excluded.
 func ConvertSymbolsToAddresses(chain string, symbols []string) ([]string, error) {
-	mapping, ok := TokenMappings[chain]
+	config, ok := ChainConfigs[chain]
 	if !ok {
-		msg := fmt.Sprintf("Could not find %v mapping", chain)
+		msg := fmt.Sprintf("Could not find %v config", chain)
 		log.Println(msg)
 		return nil, errors.New(msg)
 	}
 
 	var result []string
 	for _, symbol := range symbols {
-		address, ok := mapping.Tokens[symbol]
+		address, ok := config.Tokens[symbol]
 		if ok {
 			result = append(result, address)
 		}
@@ -115,16 +116,16 @@ func ConvertSymbolsToAddresses(chain string, symbols []string) ([]string, error)
 // Converts the token addresses to their respective symbols for the specified chain
 // If not mapped, token will be excluded.
 func ConvertAddressesToSymbols(chain string, addresses []string) ([]string, error) {
-	mapping, ok := TokenMappings[chain]
+	config, ok := ChainConfigs[chain]
 	if !ok {
-		msg := fmt.Sprintf("Could not find %v mapping", chain)
+		msg := fmt.Sprintf("Could not find %v config", chain)
 		log.Println(msg)
 		return nil, errors.New(msg)
 	}
 
 	// Reverse mapping O(tokens)
 	reversedMapping := make(map[string]string)
-	for token, address := range mapping.Tokens {
+	for token, address := range config.Tokens {
 		reversedMapping[address] = token
 	}
 
