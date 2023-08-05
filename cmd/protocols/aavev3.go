@@ -63,6 +63,9 @@ var aavev3AddressesProviders = map[string]string{
 	// Testnets
 	"ethereum_goerli": "0xC911B590248d127aD18546B186cC6B324e99F02c",
 	"avalanche_fuji":  "0x220c6A7D868FC38ECB47d5E69b99e9906300286A",
+	"arbitrum_goerli": "0x4EEE0BB72C2717310318f27628B3c8a708E4951C",
+	"optimism_goerli": "0x0b8FAe5f9Bf5a1a5867FB5b39fF4C028b1C2ebA9",
+	"polygon_mumbai":  "0xeb7A892BB04A8f836bDEeBbf60897A7Af1Bf5d7F",
 }
 
 func (a *AaveV3) GetChains() ([]string, error) {

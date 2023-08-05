@@ -25,7 +25,7 @@ func main() {
 	// lendingAPYs, _ := p.GetLendingAPYs(symbols)
 	// log.Println(lendingAPYs)
 
-	chains := []string{"ethereum_goerli", "avalanche_fuji"}
+	chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
 	chainPMs := make([]*protocols.ProtocolMarkets, len(chains))
 	for i, chain := range chains {
 		p.Connect(chain)

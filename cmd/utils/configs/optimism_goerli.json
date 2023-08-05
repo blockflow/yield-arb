@@ -1,0 +1,13 @@
+{
+    "rpcEndpoint": "https://rpc.ankr.com/optimism_testnet",
+    "tokens": {
+        "DAI": "0xD9662ae38fB577a3F6843b6b8EB5af3410889f3A",
+        "LINK": "0x14cd1A7b8c547bD4A2f531ba1BF11B6c4f2b96db",
+        "USDC": "0xcbce2891F86b69b3eF61dF8CE69e3522a0483FB3",
+        "WBTC": "0xe786Ce31c4c68B1aa004fCed5066775a788993CB",
+        "USDT": "0x8a06022A41B6b64dAefC68260371472fcB351081",
+        "AAVE": "0x7B16EB8CE4143B1bEA183082E1D50e7519980F79",
+        "SUSD": "0x4f8758F0e15d62426D36cA6c08f6b30ab678cEC7",
+        "WETH": "0xc5Bf9eb35c7d3a90816436E2a124bdd136e09fFD"
+    }
+}
