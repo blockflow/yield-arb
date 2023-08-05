@@ -19,6 +19,7 @@ var RPCEndpoints = map[string]string{
 	"ethereum":  "https://eth-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
 	"polygon":   "https://polygon-mainnet.g.alchemy.com/v2/NiPLhDKdUp9f7e6BPsQeW4lRXAo2rtbZ",
 	"avalanche": "https://rpc.ankr.com/avalanche",
+	"arbitrum":  "https://arb1.arbitrum.io/rpc",
 }
 
 func loadMapping(chain string) (*TokenMapping, error) {

@@ -15,6 +15,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// TODO: Account for new features such as isolation mode
+
 type AaveV3 struct {
 	chain        string
 	cl           *ethclient.Client
@@ -49,9 +51,14 @@ type AaveV3ReserveDataOutput struct {
 const AaveV3Name = "aavev3"
 
 var aavev3AddressesProviders = map[string]string{
-	"ethereum": "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e",
-	// "polygon":   "0xd05e3E715d945B59290df0ae8eF85c1BdB684744",
-	// "avalanche": "0xb6A86025F0FE1862B372cb0ca18CE3EDe02A318f",
+	"ethereum":  "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e",
+	"polygon":   "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
+	"avalanche": "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
+	"arbitrum":  "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
+	// "fantom",
+	// "harmony",
+	// "optimism",
+	// "metis",
 }
 
 func (a *AaveV3) GetChains() ([]string, error) {
