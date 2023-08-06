@@ -51,6 +51,11 @@ var aavev2AddressesProviders = map[string]string{
 	"ethereum":  "0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5",
 	"polygon":   "0xd05e3E715d945B59290df0ae8eF85c1BdB684744",
 	"avalanche": "0xb6A86025F0FE1862B372cb0ca18CE3EDe02A318f",
+
+	// Testnets
+	"ethereum_goerli": "0x5E52dEc931FFb32f609681B8438A51c675cc232d",
+	"polygon_mumbai":  "0x178113104fEcbcD7fF8669a0150721e231F0FD4B",
+	"avalanche_fuji":  "0x7fdC1FdF79BE3309bf82f4abdAD9f111A6590C0f",
 }
 
 func NewAaveV2Protocol() *AaveV2 {
@@ -256,16 +261,7 @@ func (a *AaveV2) GetMarkets() (ProtocolMarkets, error) {
 	}, nil
 }
 
-// // Deposits the specified token into the protocol
-// func (a *AaveV2) Deposit(user string, token string, amount *big.Int) error {
-// 	type AaveV2Deposit
-// 	// TODO: Check allowance
-// 	result := []interface{}{new(AaveV2ReserveDataOutput)}
-// 	callOpts := &bind.CallOpts{}
-// 	err := a.lendingPoolContract.Call(callOpts, &result, "getReserveData", common.HexToAddress(token))
-// 	if err != nil {
-// 		log.Printf("Failed to fetch reserve data: %v", err)
-// 		return nil, err
-// 	}
-// 	return &result[0].(*AaveV2ReserveDataOutput).Output, nil
-// }
+// Deposits the specified token into the protocol
+func (a *AaveV2) Deposit(from string, token string, amount *big.Int) (*common.Hash, error) {
+	return nil, nil
+}

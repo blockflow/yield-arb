@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	github.com/ethereum/go-ethereum v1.12.0
+	github.com/joho/godotenv v1.5.1
 	golang.org/x/exp v0.0.0-20230206171751-46f607a40771
 )
 

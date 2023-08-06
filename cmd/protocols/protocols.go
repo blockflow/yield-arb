@@ -3,6 +3,8 @@ package protocols
 import (
 	"fmt"
 	"math/big"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type Protocol interface {
@@ -25,8 +27,8 @@ type Protocol interface {
 	// Returns the markets for the protocol
 	GetMarkets() (ProtocolMarkets, error)
 
-	// // Lends the token to the protocol
-	// Deposit(user string, token string, amount *big.Int) error
+	// Lends the token to the protocol
+	Deposit(from string, token string, amount *big.Int) (*common.Hash, error)
 	// // Withdraws the token from the protocol
 	// Withdraw(user string, token string, amount *big.Int) error
 	// // Borrows the token from the protocol

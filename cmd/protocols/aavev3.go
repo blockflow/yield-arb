@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"yield-arb/cmd/accounts"
+	txs "yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -20,7 +22,9 @@ import (
 type AaveV3 struct {
 	chain        string
 	cl           *ethclient.Client
-	chainid      big.Int
+	chainid      *big.Int
+	poolAddress  string
+	poolABI      abi.ABI
 	poolContract *bind.BoundContract
 }
 
@@ -146,7 +150,9 @@ func (a *AaveV3) Connect(chain string) error {
 
 	a.chain = chain
 	a.cl = cl
-	a.chainid = *chainid
+	a.chainid = chainid
+	a.poolAddress = results[0].(*common.Address).Hex()
+	a.poolABI = parsedPoolABI
 	a.poolContract = poolContract
 	log.Printf("Connected to %v (chainid: %v, pool: %v)", a.chain, a.chainid, *results[0].(*common.Address))
 	return nil
@@ -279,4 +285,49 @@ func (a *AaveV3) GetMarkets() (ProtocolMarkets, error) {
 		LendingSpecs:   lendingSpecs,
 		BorrowingSpecs: borrowingSpecs,
 	}, nil
+}
+
+// Deposits the specified token into the protocol
+func (a *AaveV3) Deposit(from string, token string, amount *big.Int) (*common.Hash, error) {
+	methodName := "supply"
+	// TODO: Check allowance
+	assets, err := utils.ConvertSymbolsToAddresses(a.chain, []string{token})
+	if err != nil {
+		log.Printf("Failed to convert token symbol to address: %v", err)
+		return nil, err
+	}
+	data, err := a.poolABI.Pack(
+		methodName,
+		common.HexToAddress(assets[0]),
+		amount,
+		common.HexToAddress(from), // onBehalfOf, can update to delegate borrowing to another address
+		uint16(0),
+	)
+	if err != nil {
+		log.Printf("Failed to pack method args: %v", err)
+		return nil, err
+	}
+
+	// Build transaction
+	log.Println("Building deposit tx...")
+	tx, err := txs.BuildTransaction(a.cl, from, a.poolAddress, big.NewInt(0), data)
+	if err != nil {
+		log.Printf("Failed to build deposit transaction: %v", err)
+		return nil, err
+	}
+
+	// Sign transaction
+	signedTx, err := accounts.SignTransaction(from, *a.chainid, tx)
+	if err != nil {
+		log.Printf("Failed to sign tx: %v", err)
+		return nil, err
+	}
+
+	// Send transaction
+	hash, err := txs.SendTransaction(a.cl, signedTx)
+	if err != nil {
+		log.Printf("Failed to send deposit tx: %v", err)
+		return nil, err
+	}
+	return hash, nil
 }
