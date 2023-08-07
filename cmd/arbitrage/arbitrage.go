@@ -116,7 +116,11 @@ func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs
 			for _, ya := range pm.BorrowingSpecs {
 				// Calculate xa + ra(maxXbPath - ya)
 				yaSymbol := utils.CommonSymbol(ya.Token)
-				maxXbPath := maxXbPaths[yaSymbol]
+				maxXbPath, ok := maxXbPaths[yaSymbol]
+				if !ok {
+					// No additional path
+					continue
+				}
 				maxXbPathAPY := CalculateNetAPYV2(maxXbPath)
 				nextLevelAPY := new(big.Float).Sub(maxXbPathAPY, ya.APY)
 				ra := new(big.Float).Quo(xa.LTV, big.NewFloat(100))
