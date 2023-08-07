@@ -59,9 +59,9 @@ var aavev3AddressesProviders = map[string]string{
 	"polygon":   "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
 	"avalanche": "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
 	"arbitrum":  "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
+	"optimism":  "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
 	// "fantom",
 	// "harmony",
-	// "optimism",
 	// "metis",
 
 	// Testnets

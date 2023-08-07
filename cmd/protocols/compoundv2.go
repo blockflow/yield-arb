@@ -318,3 +318,5 @@ func (c *CompoundV2) GetMarkets() (*ProtocolMarkets, error) {
 func (c *CompoundV2) Deposit(from string, token string, amount *big.Int) (*common.Hash, error) {
 	return nil, nil
 }
+
+// TODO: Handle ETH transactions differently!!!

@@ -10,7 +10,7 @@ Lending and borrowing are separated by design to allow for deposit only protocol
 ## Add a new chain to protocol
 
 1. Create {CHAIN_NAME}.json and place in `utils/configs/`
-2. Update protocol to include chain
+2. Update protocol(s) to include chain
 
 ## Notes
 
