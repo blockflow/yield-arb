@@ -4,11 +4,12 @@ import (
 	"log"
 	"math/big"
 	p "yield-arb/cmd/protocols"
+	"yield-arb/cmd/utils"
 
 	"golang.org/x/exp/slices"
 )
 
-var ApprovedCollateralTokens = []string{"USDC", "USDT", "WETH", "stETH"}
+var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
 
 // Calculates the net APY for the tokenspec triplets
 func calculateNetAPY(specs []*p.TokenSpecs) *big.Float {
@@ -19,10 +20,117 @@ func calculateNetAPY(specs []*p.TokenSpecs) *big.Float {
 	return netAPY
 }
 
+// Calculates the net APY for any odd number of TokenSpecs.
+// TokenSpecs should be in alternating order of lend/borrow starting with lend.
+func calculateNetAPYV2(specs []*p.TokenSpecs) *big.Float {
+	if len(specs) == 0 {
+		// Base case
+		return big.NewFloat(0)
+	} else if len(specs)%2 == 0 {
+		// Even, intermediate case
+		assetNetAPY := new(big.Float).Sub(specs[1].APY, specs[0].APY)
+		// If borrowing again
+		nextLevelAPY := calculateNetAPYV2(specs[2:])
+		ltv := new(big.Float).Quo(specs[0].LTV, big.NewFloat(100))
+		nextLevelAPY.Mul(nextLevelAPY, ltv)
+		return assetNetAPY.Add(assetNetAPY, nextLevelAPY)
+	} else {
+		// Odd, start case
+		nextLevelAPY := calculateNetAPYV2(specs[1:])
+		ltv := new(big.Float).Quo(specs[0].LTV, big.NewFloat(100))
+		nextLevelAPY.Mul(nextLevelAPY, ltv)
+		return new(big.Float).Add(specs[0].APY, nextLevelAPY)
+	}
+}
+
 // Compares the two tokenspec triplets' net APYs.
 // Returns true if a is larger than b, false otherwise.
 func moreNetAPY(a, b []*p.TokenSpecs) bool {
 	return calculateNetAPY(a).Cmp(calculateNetAPY((b))) == 1
+}
+
+// Calculates the best strategies with dynamic path lengths and ranks them.
+// Limit to max of 3 levels (lends) to reduce interest rate risk.
+// Seeks to maximize: xa + ra(-ya + xb + rb(xc - yb))
+func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs, error) {
+	// Solve 3rd level, max of lend for each asset
+	maxXcs := make(map[string]*p.TokenSpecs)
+	for _, pm := range pms {
+		for _, xc := range pm.LendingSpecs {
+			xcSymbol := utils.CommonSymbol(xc.Token)
+			maxXc, ok := maxXcs[xcSymbol]
+			// If higher lend APY found
+			if !ok || xc.APY.Cmp(maxXc.APY) == 1 {
+				maxXcs[xcSymbol] = xc
+			}
+		}
+	}
+
+	// Solve 2nd level, max of 2 lends taking into account LTV.
+	// 1st lend and borrow assets must be from same protocol.
+	// Borrow and 2nd lend assets have to match.
+	// TODO: cache net apys
+	// Can make block recursive to support more levels.
+	maxXbPaths := make(map[string][]*p.TokenSpecs)
+	for _, pm := range pms {
+		for _, xb := range pm.LendingSpecs {
+			xbSymbol := utils.CommonSymbol(xb.Token)
+			maxXbPath, ok := maxXbPaths[xbSymbol]
+			// If first or singular lend is better
+			if !ok || xb.APY.Cmp(calculateNetAPYV2(maxXbPath)) == 1 {
+				maxXbPaths[xbSymbol] = []*p.TokenSpecs{xb}
+			}
+			// Check 2 level APYs
+			for _, yb := range pm.BorrowingSpecs {
+				// Calculate xb + rb(xc - yb)
+				ybSymbol := utils.CommonSymbol(yb.Token)
+				maxXcPath := maxXcs[ybSymbol]
+				nextLevelAPY := new(big.Float).Sub(maxXcPath.APY, yb.APY)
+				rb := new(big.Float).Quo(xb.LTV, big.NewFloat(100))
+				nextLevelAPY.Mul(nextLevelAPY, rb)
+				xbAPY := new(big.Float).Add(xb.APY, nextLevelAPY)
+				// If two levels is better
+				if xbAPY.Cmp(calculateNetAPYV2(maxXbPaths[xbSymbol])) == 1 {
+					maxXbPaths[xbSymbol] = []*p.TokenSpecs{xb, yb, maxXcPath}
+				}
+			}
+		}
+	}
+
+	// Solve 3rd level, max of 3 lends taking into account LTV.
+	maxXaPaths := make(map[string][]*p.TokenSpecs)
+	for _, pm := range pms {
+		for _, xa := range pm.LendingSpecs {
+			xaSymbol := utils.CommonSymbol(xa.Token)
+			// Check if approved collateral
+			if !slices.Contains(ApprovedCollateralTokens, xaSymbol) {
+				continue
+			}
+
+			maxXaPath, ok := maxXaPaths[xaSymbol]
+			// If first or singular lend is better
+			if !ok || xa.APY.Cmp(calculateNetAPYV2(maxXaPath)) == 1 {
+				maxXaPaths[xaSymbol] = []*p.TokenSpecs{xa}
+			}
+			// Check 2 and 3 level APYs
+			for _, ya := range pm.BorrowingSpecs {
+				// Calculate xa + ra(maxXbPath - ya)
+				yaSymbol := utils.CommonSymbol(ya.Token)
+				maxXbPath := maxXbPaths[yaSymbol]
+				maxXbPathAPY := calculateNetAPYV2(maxXbPath)
+				nextLevelAPY := new(big.Float).Sub(maxXbPathAPY, ya.APY)
+				ra := new(big.Float).Quo(xa.LTV, big.NewFloat(100))
+				nextLevelAPY.Mul(nextLevelAPY, ra)
+				xaAPY := new(big.Float).Add(xa.APY, nextLevelAPY)
+				// If better
+				if xaAPY.Cmp(calculateNetAPYV2(maxXaPaths[xaSymbol])) == 1 {
+					maxXaPaths[xaSymbol] = append([]*p.TokenSpecs{xa, ya}, maxXbPath...)
+				}
+			}
+		}
+	}
+
+	return maxXaPaths, nil
 }
 
 // Calculates the strategies and ranks them

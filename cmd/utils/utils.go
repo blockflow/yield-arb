@@ -141,6 +141,14 @@ func ConvertAddressesToSymbols(chain string, addresses []string) ([]string, erro
 	return result, nil
 }
 
+// Returns the common symbol if an alias, otherwise return the arg.
+func CommonSymbol(symbol string) string {
+	if commonSymbol, ok := TokenAliases[symbol]; ok {
+		return commonSymbol
+	}
+	return symbol
+}
+
 // Convert a big.Int ray to a percentage
 func ConvertRayToPercentage(ray *big.Int) *big.Float {
 	rayAsFloat := new(big.Float).SetInt(ray)

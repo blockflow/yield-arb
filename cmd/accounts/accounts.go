@@ -18,8 +18,6 @@ func init() {
 		log.Printf("Failed to load dotenv: %v", err)
 	}
 	log.Print("Loaded dotenv")
-	pk := os.Getenv(PrivateKeyKey)
-	log.Print(pk)
 }
 
 func SignTransaction(from string, chainID big.Int, tx *types.Transaction) (*types.Transaction, error) {

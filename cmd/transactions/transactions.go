@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// TODO: Estimate gas price dynamically
 // Fetches tx params and builds the tx.
 func BuildTransaction(e *ethclient.Client, from, to string, amount *big.Int, data []byte) (*types.Transaction, error) {
 	nonce, err := e.PendingNonceAt(context.Background(), common.HexToAddress(from))
