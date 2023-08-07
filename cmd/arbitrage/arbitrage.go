@@ -22,7 +22,7 @@ func calculateNetAPY(specs []*p.TokenSpecs) *big.Float {
 
 // Calculates the net APY for any odd number of TokenSpecs.
 // TokenSpecs should be in alternating order of lend/borrow starting with lend.
-func calculateNetAPYV2(specs []*p.TokenSpecs) *big.Float {
+func CalculateNetAPYV2(specs []*p.TokenSpecs) *big.Float {
 	if len(specs) == 0 {
 		// Base case
 		return big.NewFloat(0)
@@ -30,13 +30,13 @@ func calculateNetAPYV2(specs []*p.TokenSpecs) *big.Float {
 		// Even, intermediate case
 		assetNetAPY := new(big.Float).Sub(specs[1].APY, specs[0].APY)
 		// If borrowing again
-		nextLevelAPY := calculateNetAPYV2(specs[2:])
+		nextLevelAPY := CalculateNetAPYV2(specs[2:])
 		ltv := new(big.Float).Quo(specs[0].LTV, big.NewFloat(100))
 		nextLevelAPY.Mul(nextLevelAPY, ltv)
 		return assetNetAPY.Add(assetNetAPY, nextLevelAPY)
 	} else {
 		// Odd, start case
-		nextLevelAPY := calculateNetAPYV2(specs[1:])
+		nextLevelAPY := CalculateNetAPYV2(specs[1:])
 		ltv := new(big.Float).Quo(specs[0].LTV, big.NewFloat(100))
 		nextLevelAPY.Mul(nextLevelAPY, ltv)
 		return new(big.Float).Add(specs[0].APY, nextLevelAPY)
@@ -77,7 +77,7 @@ func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs
 			xbSymbol := utils.CommonSymbol(xb.Token)
 			maxXbPath, ok := maxXbPaths[xbSymbol]
 			// If first or singular lend is better
-			if !ok || xb.APY.Cmp(calculateNetAPYV2(maxXbPath)) == 1 {
+			if !ok || xb.APY.Cmp(CalculateNetAPYV2(maxXbPath)) == 1 {
 				maxXbPaths[xbSymbol] = []*p.TokenSpecs{xb}
 			}
 			// Check 2 level APYs
@@ -90,7 +90,7 @@ func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs
 				nextLevelAPY.Mul(nextLevelAPY, rb)
 				xbAPY := new(big.Float).Add(xb.APY, nextLevelAPY)
 				// If two levels is better
-				if xbAPY.Cmp(calculateNetAPYV2(maxXbPaths[xbSymbol])) == 1 {
+				if xbAPY.Cmp(CalculateNetAPYV2(maxXbPaths[xbSymbol])) == 1 {
 					maxXbPaths[xbSymbol] = []*p.TokenSpecs{xb, yb, maxXcPath}
 				}
 			}
@@ -109,7 +109,7 @@ func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs
 
 			maxXaPath, ok := maxXaPaths[xaSymbol]
 			// If first or singular lend is better
-			if !ok || xa.APY.Cmp(calculateNetAPYV2(maxXaPath)) == 1 {
+			if !ok || xa.APY.Cmp(CalculateNetAPYV2(maxXaPath)) == 1 {
 				maxXaPaths[xaSymbol] = []*p.TokenSpecs{xa}
 			}
 			// Check 2 and 3 level APYs
@@ -117,13 +117,13 @@ func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs
 				// Calculate xa + ra(maxXbPath - ya)
 				yaSymbol := utils.CommonSymbol(ya.Token)
 				maxXbPath := maxXbPaths[yaSymbol]
-				maxXbPathAPY := calculateNetAPYV2(maxXbPath)
+				maxXbPathAPY := CalculateNetAPYV2(maxXbPath)
 				nextLevelAPY := new(big.Float).Sub(maxXbPathAPY, ya.APY)
 				ra := new(big.Float).Quo(xa.LTV, big.NewFloat(100))
 				nextLevelAPY.Mul(nextLevelAPY, ra)
 				xaAPY := new(big.Float).Add(xa.APY, nextLevelAPY)
 				// If better
-				if xaAPY.Cmp(calculateNetAPYV2(maxXaPaths[xaSymbol])) == 1 {
+				if xaAPY.Cmp(CalculateNetAPYV2(maxXaPaths[xaSymbol])) == 1 {
 					maxXaPaths[xaSymbol] = append([]*p.TokenSpecs{xa, ya}, maxXbPath...)
 				}
 			}

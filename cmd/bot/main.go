@@ -50,7 +50,7 @@ func main() {
 
 	stratsV2, _ := arbitrage.CalculateStrategiesV2(chainPMs)
 	for collateral, specs := range stratsV2 {
-		log.Print(collateral)
+		log.Printf("%v: %v", collateral, arbitrage.CalculateNetAPYV2(specs))
 		for _, spec := range specs {
 			log.Print(*spec)
 		}
