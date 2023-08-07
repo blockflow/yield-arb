@@ -273,13 +273,13 @@ func (a *AaveV3) GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error) {
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
 // TODO: Check for supply capped markets
-func (a *AaveV3) GetMarkets() (ProtocolMarkets, error) {
+func (a *AaveV3) GetMarkets() (*ProtocolMarkets, error) {
 	log.Printf("Fetching market data for %v...", a.chain)
 	lendingTokens, _ := (*a).GetLendingTokens()
 	lendingSpecs, _ := (*a).GetLendingSpecs(lendingTokens)
 	borrowingSpecs, _ := (*a).GetBorrowingSpecs(lendingTokens)
 
-	return ProtocolMarkets{
+	return &ProtocolMarkets{
 		Protocol:       AaveV2Name,
 		Chain:          a.chain,
 		LendingSpecs:   lendingSpecs,

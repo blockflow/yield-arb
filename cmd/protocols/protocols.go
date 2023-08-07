@@ -25,7 +25,7 @@ type Protocol interface {
 	// Tokens are represented as their symbols
 	GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error)
 	// Returns the markets for the protocol
-	GetMarkets() (ProtocolMarkets, error)
+	GetMarkets() (*ProtocolMarkets, error)
 
 	// Lends the token to the protocol
 	Deposit(from string, token string, amount *big.Int) (*common.Hash, error)
@@ -70,8 +70,8 @@ func GetProtocol(protocol string) (Protocol, error) {
 		return NewAaveV2Protocol(), nil
 	case "aavev3":
 		return NewAaveV3Protocol(), nil
-	// case "compound":
-	// 	return NewCompoundProtocol(), nil
+	case "compoundv2":
+		return NewCompoundV2Protocol(), nil
 	// case "dydx":
 	// 	return NewDydxProtocol(), nil
 	default:

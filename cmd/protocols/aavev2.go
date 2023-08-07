@@ -20,7 +20,7 @@ import (
 type AaveV2 struct {
 	chain               string
 	cl                  *ethclient.Client
-	chainid             big.Int
+	chainid             *big.Int
 	lendingPoolContract *bind.BoundContract
 }
 
@@ -127,7 +127,7 @@ func (a *AaveV2) Connect(chain string) error {
 
 	a.chain = chain
 	a.cl = cl
-	a.chainid = *chainid
+	a.chainid = chainid
 	a.lendingPoolContract = lendingPoolContract
 	log.Printf("Connected to %v (chainid: %v, lendingpool: %v)", a.chain, a.chainid, *results[0].(*common.Address))
 	return nil
@@ -139,7 +139,7 @@ func (a *AaveV2) getReservesList() ([]string, error) {
 	callOpts := &bind.CallOpts{}
 	err := a.lendingPoolContract.Call(callOpts, &results, "getReservesList")
 	if err != nil {
-		log.Printf("Failed to fetch lending tokens: %v", err)
+		log.Printf("Failed to fetch tokens: %v", err)
 		return nil, err
 	}
 	addresses := *results[0].(*[]common.Address)
@@ -247,13 +247,13 @@ func (a *AaveV2) GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error) {
 
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
-func (a *AaveV2) GetMarkets() (ProtocolMarkets, error) {
+func (a *AaveV2) GetMarkets() (*ProtocolMarkets, error) {
 	log.Printf("Fetching market data for %v...", a.chain)
 	lendingTokens, _ := (*a).GetLendingTokens()
 	lendingSpecs, _ := (*a).GetLendingSpecs(lendingTokens)
 	borrowingSpecs, _ := (*a).GetBorrowingSpecs(lendingTokens)
 
-	return ProtocolMarkets{
+	return &ProtocolMarkets{
 		Protocol:       AaveV2Name,
 		Chain:          a.chain,
 		LendingSpecs:   lendingSpecs,

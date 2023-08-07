@@ -2,12 +2,14 @@ package main
 
 import (
 	"log"
+	"time"
 	"yield-arb/cmd/arbitrage"
 	"yield-arb/cmd/protocols"
 )
 
 func main() {
 	log.Println("Starting bot...")
+	startTime := time.Now()
 	// p, err := protocols.GetProtocol("aavev2")
 	// if err != nil {
 	// 	panic(err)
@@ -25,16 +27,20 @@ func main() {
 	// lendingAPYs, _ := p.GetLendingAPYs(symbols)
 	// log.Println(lendingAPYs)
 
-	chains := []string{"ethereum", "polygon", "avalanche"}
+	chains := []string{"ethereum"}
+	// chains := []string{"ethereum", "polygon", "avalanche"}
 	// chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
 	chainPMs := make([]*protocols.ProtocolMarkets, len(chains))
-	ps := []string{"aavev3"}
+	ps := []string{"compoundv2", "aavev3", "aavev2"}
 	for _, protocol := range ps {
-		p, _ := protocols.GetProtocol(protocol)
+		p, err := protocols.GetProtocol(protocol)
+		if err != nil {
+			log.Printf("Failed to get protocol: %v", err)
+		}
 		for i, chain := range chains {
 			p.Connect(chain)
 			pms, _ := p.GetMarkets()
-			chainPMs[i] = &pms
+			chainPMs[i] = pms
 		}
 	}
 
@@ -59,4 +65,8 @@ func main() {
 	// Test Deposit()
 	// p.Connect("ethereum_goerli")
 	// p.Deposit("0x18dC22D776aEFefD2538079409176086fcB6C741", "WETH", big.NewInt(1))
+
+	endTime := time.Now()
+	elapsedTime := endTime.Sub(startTime)
+	log.Printf("Time elapsed: %v", elapsedTime)
 }
