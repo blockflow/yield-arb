@@ -22,6 +22,11 @@ type ChainConfig struct {
 var ChainConfigs = make(map[string]*ChainConfig)
 var TokenAliases map[string]string
 
+// Constants
+var SecPerYear = big.NewFloat(60 * 60 * 24 * 365)
+var ETHMantissa = new(big.Float).SetUint64(1000000000000000000) // 10**18
+var ETHBlocksPerDay = big.NewFloat(7200)
+
 func init() {
 	// Parse all config json files
 	_, filename, _, _ := runtime.Caller(0)

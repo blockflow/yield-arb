@@ -16,12 +16,12 @@ func BuildTransaction(e *ethclient.Client, from, to string, amount *big.Int, dat
 	nonce, err := e.PendingNonceAt(context.Background(), common.HexToAddress(from))
 	if err != nil {
 		log.Printf("Failed to retrieve nonce for %v: %v", from, err)
-		return nil, nil
+		return nil, err
 	}
 	gasPrice, err := e.SuggestGasPrice(context.Background())
 	if err != nil {
 		log.Printf("Failed to retrieve gasPrice: %v", err)
-		return nil, nil
+		return nil, err
 	}
 	return types.NewTransaction(
 		nonce,
@@ -38,7 +38,7 @@ func SendTransaction(e *ethclient.Client, signedTx *types.Transaction) (*common.
 	err := e.SendTransaction(context.Background(), signedTx)
 	if err != nil {
 		log.Printf("Failed to send tx: %v", err)
-		return nil, nil
+		return nil, err
 	}
 	hash := signedTx.Hash()
 	return &hash, nil

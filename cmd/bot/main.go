@@ -27,11 +27,12 @@ func main() {
 	// lendingAPYs, _ := p.GetLendingAPYs(symbols)
 	// log.Println(lendingAPYs)
 
-	chains := []string{"ethereum"}
+	chains := []string{"polygon"}
 	// chains := []string{"ethereum", "polygon", "avalanche"}
 	// chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
 	var chainPMs []*protocols.ProtocolMarkets
-	ps := []string{"compoundv2", "aavev3", "aavev2"}
+	// ps := []string{"compoundv3"}
+	ps := []string{"compoundv3", "aavev3", "aavev2"}
 	for _, protocol := range ps {
 		p, err := protocols.GetProtocol(protocol)
 		if err != nil {

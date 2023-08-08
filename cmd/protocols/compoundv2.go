@@ -29,14 +29,13 @@ type CompoundV2 struct {
 }
 
 const CompoundV2Name = "compoundv2"
+
+// TODO: Update for testnet
 const compv2ComptrollerAddress = "0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B"
 const compv2CetherAddress = "0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5"
 const compv2ComptrollerName = "comptroller"
 const compv2Cerc20Name = "cerc20"
 const compv2CetherName = "cether"
-
-var ethMantissa = new(big.Float).SetUint64(1000000000000000000)
-var ethBlocksPerDay = big.NewFloat(7200)
 
 // Mapping of token symbols to cERC20 address.
 // Might need to be refreshed.
@@ -192,7 +191,7 @@ func (c *CompoundV2) getAllTokens() ([]string, error) {
 		symbolResults := []interface{}{new(string)}
 		if err := cerc20Contract.Call(&bind.CallOpts{}, &symbolResults, "symbol"); err != nil {
 			log.Printf("Failed to fetch token symbol: %v", err)
-			return nil, nil
+			return nil, err
 		}
 		// Trim the "c" prefix
 		symbol := strings.TrimPrefix(*symbolResults[0].(*string), "c")
@@ -237,7 +236,7 @@ func (c *CompoundV2) getTokenSpecs(symbols []string, rateMethod string) ([]*Toke
 			marketResult := []interface{}{new(MarketOutput)}
 			if err := c.comptrollerContract.Call(&bind.CallOpts{}, &marketResult, "markets", cerc20Address); err != nil {
 				log.Printf("Failed to fetch %v ltv: %v", symbol, err)
-				return nil, nil
+				return nil, err
 			}
 			ltv.SetInt(marketResult[0].(*MarketOutput).CollateralFactorMantissa)
 			ltv.Quo(ltv, new(big.Float).SetUint64(10000000000000000))
@@ -253,14 +252,14 @@ func (c *CompoundV2) getTokenSpecs(symbols []string, rateMethod string) ([]*Toke
 		startTime := time.Now()
 		if err := cerc20Contract.Call(&bind.CallOpts{}, &supplyRatePerBlockResults, rateMethod); err != nil {
 			log.Printf("Failed to fetch %v rate: %v", symbol, err)
-			return nil, nil
+			return nil, err
 		}
 		endTime := time.Now()
 		elapsedTime := endTime.Sub(startTime)
 		log.Printf("Elapsed time: %v", elapsedTime)
 		supplyRatePerBlock := new(big.Float).SetInt(supplyRatePerBlockResults[0].(*SupplyRatePerBlockOutput).RatePerBlock)
-		dailyRate := new(big.Float).Quo(supplyRatePerBlock, ethMantissa)
-		dailyRate.Mul(dailyRate, ethBlocksPerDay)
+		dailyRate := new(big.Float).Quo(supplyRatePerBlock, utils.ETHMantissa)
+		dailyRate.Mul(dailyRate, utils.ETHBlocksPerDay)
 		dailyRate.Add(dailyRate, big.NewFloat(1))
 		dailyRateFloat, _ := dailyRate.Float64()
 		yearlyTotal := math.Pow(dailyRateFloat, 365) // Days per year

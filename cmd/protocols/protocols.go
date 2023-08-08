@@ -72,8 +72,8 @@ func GetProtocol(protocol string) (Protocol, error) {
 		return NewAaveV3Protocol(), nil
 	case "compoundv2":
 		return NewCompoundV2Protocol(), nil
-	// case "dydx":
-	// 	return NewDydxProtocol(), nil
+	case "compoundv3":
+		return NewCompoundV3Protocol(), nil
 	default:
 		return nil, fmt.Errorf("unknown protocol: %s", protocol)
 	}
