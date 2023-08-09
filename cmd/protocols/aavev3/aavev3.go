@@ -1,0 +1,343 @@
+package aavev3
+
+import (
+	"context"
+	"log"
+	"math/big"
+	"os"
+	"path/filepath"
+	"runtime"
+	"time"
+	"yield-arb/cmd/accounts"
+	txs "yield-arb/cmd/transactions"
+	"yield-arb/cmd/utils"
+
+	t "yield-arb/cmd/protocols/types"
+
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
+)
+
+// TODO: Account for new features such as isolation mode
+
+type AaveV3 struct {
+	chain        string
+	cl           *ethclient.Client
+	chainid      *big.Int
+	poolAddress  string
+	poolABI      abi.ABI
+	poolContract *bind.BoundContract
+}
+
+type AaveV3ReserveData struct {
+	Configurationstruct struct {
+		Data *big.Int `json:"data"`
+	} `json:"configuration"`
+	LiquidityIndex              *big.Int       `json:"liquidityIndex"`
+	CurrentLiquidityRate        *big.Int       `json:"currentLiquidityRate"`
+	VariableBorrowIndex         *big.Int       `json:"variableBorrowIndex"`
+	CurrentVariableBorrowRate   *big.Int       `json:"currentVariableBorrowRate"`
+	CurrentStableBorrowRate     *big.Int       `json:"currentStableBorrowRate"`
+	LastUpdateTimestamp         *big.Int       `json:"lastUpdateTimestamp"`
+	ID                          uint16         `json:"id"`
+	ATokenAddress               common.Address `json:"aTokenAddress"`
+	StableDebtTokenAddress      common.Address `json:"stableDebtTokenAddress"`
+	VariableDebtTokenAddress    common.Address `json:"variableDebtTokenAddress"`
+	InterestRateStrategyAddress common.Address `json:"interestRateStrategyAddress"`
+	AccruedToTreasury           *big.Int       `json:"accruedToTreasury"`
+	Unbacked                    *big.Int       `json:"unbacked"`
+	IsolationModeTotalDebt      *big.Int       `json:"isolationModeTotalDebt"`
+}
+
+type AaveV3ReserveDataOutput struct {
+	Output AaveV3ReserveData
+}
+
+const AaveV3Name = "aavev3"
+
+var aavev3AddressesProviders = map[string]string{
+	"ethereum":  "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e",
+	"polygon":   "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
+	"avalanche": "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
+	"arbitrum":  "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
+	"optimism":  "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
+	// "fantom",
+	// "harmony",
+	// "metis",
+
+	// Testnets
+	"ethereum_goerli": "0xC911B590248d127aD18546B186cC6B324e99F02c",
+	"avalanche_fuji":  "0x220c6A7D868FC38ECB47d5E69b99e9906300286A",
+	"arbitrum_goerli": "0x4EEE0BB72C2717310318f27628B3c8a708E4951C",
+	"optimism_goerli": "0x0b8FAe5f9Bf5a1a5867FB5b39fF4C028b1C2ebA9",
+	"polygon_mumbai":  "0xeb7A892BB04A8f836bDEeBbf60897A7Af1Bf5d7F",
+}
+
+func (a *AaveV3) GetChains() ([]string, error) {
+	return []string{
+		"ethereum",
+		"polygon",
+		"avalanche",
+		"arbitrum",
+		"fantom",
+		"harmony",
+		"optimism",
+		"metis",
+	}, nil
+}
+
+func NewAaveV3Protocol() *AaveV3 {
+	return &AaveV3{}
+}
+
+func (a *AaveV3) Connect(chain string) error {
+	// Setup the client
+	rpcEndpoint := utils.ChainConfigs[chain].RPCEndpoint
+	cl, err := ethclient.Dial(rpcEndpoint)
+	if err != nil {
+		log.Printf("Failed to connect to the %v client: %v", chain, err)
+		return err
+	}
+
+	// Fetch chainid
+	chainid, err := cl.ChainID(context.Background())
+	if err != nil {
+		log.Printf("Failed to fetch chainid: %v", err)
+		return err
+	}
+
+	// Load addresses provider abi
+	_, filename, _, _ := runtime.Caller(0)
+	dir := filepath.Dir(filename)
+	path := filepath.Join(dir, "addresses_provider.json")
+	rawABI, err := os.Open(path)
+	if err != nil {
+		log.Printf("Failed to open addresses_provider.json: %v", err)
+		return err
+	}
+	defer rawABI.Close()
+	parsedABI, err := abi.JSON(rawABI)
+	if err != nil {
+		log.Printf("Failed to parse addresses_provider.json: %v", err)
+		return err
+	}
+
+	// Instantiate addresses provider
+	addressesProvider := common.HexToAddress(aavev3AddressesProviders[chain])
+	addressesProviderContract := bind.NewBoundContract(addressesProvider, parsedABI, cl, cl, cl)
+
+	// Fetch lending pool address
+	results := []interface{}{new(common.Address)}
+	callOpts := &bind.CallOpts{}
+	err = addressesProviderContract.Call(callOpts, &results, "getPool")
+	if err != nil {
+		log.Printf("Failed to fetch lending pool: %v", err)
+		return err
+	}
+
+	// Instantiate lending pool
+	rawPoolABI, err := os.Open(filepath.Join(dir, "pool.json"))
+	if err != nil {
+		log.Printf("Failed to open pool.json: %v", err)
+		return err
+	}
+	defer rawPoolABI.Close()
+	parsedPoolABI, err := abi.JSON(rawPoolABI)
+	if err != nil {
+		log.Printf("Failed to parse pool.json: %v", err)
+		return err
+	}
+	poolContract := bind.NewBoundContract(*results[0].(*common.Address), parsedPoolABI, cl, cl, cl)
+
+	a.chain = chain
+	a.cl = cl
+	a.chainid = chainid
+	a.poolAddress = results[0].(*common.Address).Hex()
+	a.poolABI = parsedPoolABI
+	a.poolContract = poolContract
+	log.Printf("Connected to %v (chainid: %v, pool: %v)", a.chain, a.chainid, *results[0].(*common.Address))
+	return nil
+}
+
+// Returns the symbols of the supported tokens
+func (a *AaveV3) getReservesList() ([]string, error) {
+	results := []interface{}{new([]common.Address)}
+	err := a.poolContract.Call(nil, &results, "getReservesList")
+	if err != nil {
+		log.Printf("Failed to fetch lending tokens: %v", err)
+		return nil, err
+	}
+	addresses := *results[0].(*[]common.Address)
+
+	// Convert to string
+	addressesString := make([]string, len(addresses))
+	for i, address := range addresses {
+		addressesString[i] = address.Hex()
+	}
+
+	// Convert to symbols
+	symbols, err := utils.ConvertAddressesToSymbols(a.chain, addressesString)
+	if err != nil {
+		log.Printf("Failed to convert addresses to symbols: %v", err)
+		return nil, err
+	}
+
+	return symbols, nil
+}
+
+// GetLendingTokens returns the tokens that can be lent on the given chain
+func (a *AaveV3) GetLendingTokens() ([]string, error) {
+	return a.getReservesList()
+}
+
+// GetBorrowingTokens returns the tokens that can be borrowed on the given chain
+func (a *AaveV3) GetBorrowingTokens() ([]string, error) {
+	return a.getReservesList()
+}
+
+// Get ReserveData directly from smart contract
+func (a *AaveV3) getReserveData(token string) (*AaveV3ReserveData, error) {
+	result := []interface{}{new(AaveV3ReserveDataOutput)}
+	callOpts := &bind.CallOpts{}
+	err := a.poolContract.Call(callOpts, &result, "getReserveData", common.HexToAddress(token))
+	if err != nil {
+		log.Printf("Failed to fetch reserve data: %v", err)
+		return nil, err
+	}
+	return &result[0].(*AaveV3ReserveDataOutput).Output, nil
+}
+
+// Get the lending TokenSpecs for the specified tokens. Filters out paused tokens.
+func (a *AaveV3) getTokenSpecs(symbols []string, getAPY func(*AaveV3ReserveData) *big.Int) ([]*t.TokenSpecs, error) {
+	addresses, err := utils.ConvertSymbolsToAddresses(a.chain, symbols)
+	if err != nil {
+		log.Printf("Failed to convert symbols to addresses: %v", err)
+		return nil, err
+	}
+	if len(addresses) != len(symbols) {
+		log.Printf("%v tokens lost during conversion", len(symbols)-len(addresses))
+		return nil, err
+	}
+
+	var tokenSpecs []*t.TokenSpecs
+	for i, address := range addresses {
+		reserveData, err := a.getReserveData(address)
+		if err != nil {
+			log.Printf("Failed to fetch reserve data: %v", err)
+			return nil, err
+		}
+
+		// Check if paused
+		config := new(big.Int).Rsh(reserveData.Configurationstruct.Data, 58)
+		config = config.And(config, big.NewInt(1))
+		borrowingEnabled := config.Uint64() == 1
+		if !borrowingEnabled {
+			continue
+		}
+
+		// Calculate LTV in percentage
+		mask := big.NewInt(0xFFFF)                                             // 16-bit mask
+		ltvInt := new(big.Int).And(reserveData.Configurationstruct.Data, mask) // mask
+		ltv := new(big.Float).SetInt(ltvInt)                                   // convert to float
+		ltv.Quo(ltv, big.NewFloat(100))                                        // convert to percentage
+
+		// Get the lending/borrowing rate
+		liquidtyRate := utils.ConvertRayToPercentage(getAPY(reserveData))
+		tokenSpecs = append(tokenSpecs, &t.TokenSpecs{
+			Protocol: AaveV3Name,
+			Chain:    a.chain,
+			Token:    symbols[i],
+			LTV:      ltv,
+			APY:      liquidtyRate,
+		})
+	}
+	return tokenSpecs, nil
+}
+
+func getLendingAPYV3(rd *AaveV3ReserveData) *big.Int {
+	return rd.CurrentLiquidityRate
+}
+
+func getBorrowingAPYV3(rd *AaveV3ReserveData) *big.Int {
+	return rd.CurrentVariableBorrowRate
+}
+
+func (a *AaveV3) GetLendingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
+	return a.getTokenSpecs(symbols, getLendingAPYV3)
+}
+
+func (a *AaveV3) GetBorrowingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
+	return a.getTokenSpecs(symbols, getBorrowingAPYV3)
+}
+
+// Returns the market.
+// Assumes lending and borrowing tokens are the same.
+// TODO: Check for supply capped markets
+// Main branch: 1.75s
+func (a *AaveV3) GetMarkets() (*t.ProtocolMarkets, error) {
+	log.Printf("Fetching market data for %v...", a.chain)
+	startTime := time.Now()
+	lendingTokens, _ := (*a).GetLendingTokens()
+	lendingSpecs, _ := (*a).GetLendingSpecs(lendingTokens)
+	borrowingSpecs, _ := (*a).GetBorrowingSpecs(lendingTokens)
+	log.Printf("Time elapsed: %v", time.Since(startTime))
+
+	return &t.ProtocolMarkets{
+		Protocol:       AaveV3Name,
+		Chain:          a.chain,
+		LendingSpecs:   lendingSpecs,
+		BorrowingSpecs: borrowingSpecs,
+	}, nil
+}
+
+// Deposits the specified token into the protocol
+func (a *AaveV3) Supply(from string, token string, amount *big.Int) (*common.Hash, error) {
+	methodName := "supply"
+	// TODO: Check allowance
+	assets, err := utils.ConvertSymbolsToAddresses(a.chain, []string{token})
+	if err != nil {
+		log.Printf("Failed to convert token symbol to address: %v", err)
+		return nil, err
+	}
+	data, err := a.poolABI.Pack(
+		methodName,
+		common.HexToAddress(assets[0]),
+		amount,
+		common.HexToAddress(from), // onBehalfOf, can update to delegate borrowing to another address
+		uint16(0),
+	)
+	if err != nil {
+		log.Printf("Failed to pack method args: %v", err)
+		return nil, err
+	}
+
+	// Build transaction
+	log.Println("Building deposit tx...")
+	tx, err := txs.BuildTransaction(a.cl, from, a.poolAddress, big.NewInt(0), data)
+	if err != nil {
+		log.Printf("Failed to build deposit transaction: %v", err)
+		return nil, err
+	}
+
+	// Sign transaction
+	signedTx, err := accounts.SignTransaction(from, *a.chainid, tx)
+	if err != nil {
+		log.Printf("Failed to sign tx: %v", err)
+		return nil, err
+	}
+
+	// Send transaction
+	hash, err := txs.SendTransaction(a.cl, signedTx)
+	if err != nil {
+		log.Printf("Failed to send deposit tx: %v", err)
+		return nil, err
+	}
+	return hash, nil
+}
+
+// Borrows the specified token from the protocol
+// func (a *AaveV3) Borrow(from string, token string, amount *big.Int) (*common.Hash, error) {
+
+// }

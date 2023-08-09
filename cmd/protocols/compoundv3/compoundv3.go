@@ -1,12 +1,15 @@
-package protocols
+package compoundv3
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"os"
 	"path/filepath"
 	"runtime"
+	t "yield-arb/cmd/protocols/types"
 	"yield-arb/cmd/utils"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -75,7 +78,7 @@ func (c *CompoundV3) Connect(chain string) error {
 	dir := filepath.Dir(filename)
 
 	// Instantiate comet
-	cometPath := filepath.Join(dir, "abis", CompoundV3Name, compv3CometName+".json")
+	cometPath := filepath.Join(dir, compv3CometName+".json")
 	cometRawABI, err := os.Open(cometPath)
 	if err != nil {
 		log.Printf("Failed to open %v.json: %v", compv3CometName, err)
@@ -106,6 +109,11 @@ func (c *CompoundV3) Connect(chain string) error {
 	if err != nil {
 		log.Printf("Failed to convert addresses to symbols: %v", err)
 		return err
+	}
+	if len(baseTokenSymbol) != 1 {
+		msg := fmt.Sprintf("Couldn't find symbol for %v", baseToken)
+		log.Print(msg)
+		return errors.New(msg)
 	}
 
 	c.baseToken = baseTokenSymbol[0]
@@ -246,14 +254,14 @@ func (c *CompoundV3) getBaseAPR(method string) (*big.Float, error) {
 // Returns the TokenSpecs for the specified tokens
 // Tokens are represented as their symbols
 // Only base token earns APR. Base token LTV is 0.
-func (c *CompoundV3) GetLendingSpecs(symbols []string) ([]*TokenSpecs, error) {
+func (c *CompoundV3) GetLendingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
 	addresses, err := utils.ConvertSymbolsToAddresses(c.chain, symbols)
 	if err != nil {
 		log.Printf("Failed to convert symbols to addresses: %v", err)
 		return nil, err
 	}
 
-	result := make([]*TokenSpecs, len(symbols))
+	result := make([]*t.TokenSpecs, len(symbols))
 	for i, symbol := range symbols {
 		if symbol == c.baseToken {
 			baseAPR, err := c.getBaseAPR("getSupplyRate")
@@ -261,7 +269,7 @@ func (c *CompoundV3) GetLendingSpecs(symbols []string) ([]*TokenSpecs, error) {
 				log.Printf("Failed to get base apr: %v", err)
 				return nil, err
 			}
-			result[i] = &TokenSpecs{
+			result[i] = &t.TokenSpecs{
 				Protocol: CompoundV3Name,
 				Chain:    c.chain,
 				Token:    symbol,
@@ -276,7 +284,7 @@ func (c *CompoundV3) GetLendingSpecs(symbols []string) ([]*TokenSpecs, error) {
 			}
 			ltv := big.NewFloat(float64(assetInfo.BorrowCollateralFactor))
 			ltv.Quo(ltv, big.NewFloat(10000000000000000))
-			result[i] = &TokenSpecs{
+			result[i] = &t.TokenSpecs{
 				Protocol: CompoundV3Name,
 				Chain:    c.chain,
 				Token:    symbol,
@@ -292,7 +300,7 @@ func (c *CompoundV3) GetLendingSpecs(symbols []string) ([]*TokenSpecs, error) {
 // Returns the TokenSpecs for the specified tokens.
 // Tokens are represented as their symbols.
 // Only base token can be borrowed. Sets LTV to 0.
-func (c *CompoundV3) GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error) {
+func (c *CompoundV3) GetBorrowingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
 	for _, symbol := range symbols {
 		if symbol == c.baseToken {
 			baseAPR, err := c.getBaseAPR("getBorrowRate")
@@ -300,7 +308,7 @@ func (c *CompoundV3) GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error) 
 				log.Printf("Failed to get base apr: %v", err)
 				return nil, err
 			}
-			return []*TokenSpecs{{
+			return []*t.TokenSpecs{{
 				Protocol: CompoundV3Name,
 				Chain:    c.chain,
 				Token:    symbol,
@@ -310,11 +318,11 @@ func (c *CompoundV3) GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error) 
 		}
 	}
 
-	return []*TokenSpecs{}, nil
+	return []*t.TokenSpecs{}, nil
 }
 
 // Returns the markets for the protocol
-func (c *CompoundV3) GetMarkets() (*ProtocolMarkets, error) {
+func (c *CompoundV3) GetMarkets() (*t.ProtocolMarkets, error) {
 	log.Println("Fetching markets...")
 	symbols, err := c.GetLendingTokens()
 	if err != nil {
@@ -328,7 +336,7 @@ func (c *CompoundV3) GetMarkets() (*ProtocolMarkets, error) {
 	if err != nil {
 		log.Printf("Failed to fetch borrowing specs: %v", err)
 	}
-	return &ProtocolMarkets{
+	return &t.ProtocolMarkets{
 		Protocol:       CompoundV3Name,
 		Chain:          c.chain,
 		LendingSpecs:   lendingSpecs,
@@ -337,7 +345,7 @@ func (c *CompoundV3) GetMarkets() (*ProtocolMarkets, error) {
 }
 
 // // Lends the token to the protocol
-func (c *CompoundV3) Deposit(from string, token string, amount *big.Int) (*common.Hash, error) {
+func (c *CompoundV3) Supply(from string, token string, amount *big.Int) (*common.Hash, error) {
 	return nil, nil
 }
 

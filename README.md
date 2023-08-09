@@ -4,13 +4,20 @@ Lending and borrowing are separated by design to allow for deposit only protocol
 
 ## Add a new protocol
 
-1. Create {protocol_name}.go file in `protocols/`
-2. Add to switch statement in `protocols/protocols.go`
+1. Create {PROTOCOL} subdirectory in `protocols/`
+2. Add in `{PROTOCOL}.go` and other files
+3. Import and add to switch statement in `protocols/protocols.go`
 
 ## Add a new chain to protocol
 
 1. Create {CHAIN_NAME}.json and place in `utils/configs/`
 2. Update protocol(s) to include chain
+
+## Add a new contract
+
+1. Fetch ABI from etherscan or associated block explorer and put in `protocols/{PROTOCOL}/`
+2. If needed, build abigen tool (https://geth.ethereum.org/docs/tools/abigen) and place in `protocols/`
+3. Generate bindings into `protocols/bindings/` with `./abigen --abi cmd/protocols/{PROTOCOL}/{CONTRACT}.json --pkg protocols --type {CONTRACT} --out cmd/protocols/{PROTOCOL}/contract.go`
 
 ## Notes
 
