@@ -269,6 +269,7 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolMarkets, error) {
 		})
 	}
 
+	log.Printf("Fetched %v lending tokens & %v borrowing tokens", len(lendingSpecs), len(borrowingSpecs))
 	log.Printf("Time elapsed: %v", time.Since(startTime))
 
 	return &t.ProtocolMarkets{

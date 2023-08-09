@@ -120,6 +120,7 @@ func ConvertSymbolsToAddresses(chain string, symbols []string) ([]string, error)
 
 // Converts the token addresses to their respective symbols for the specified chain
 // If not mapped, token will be excluded.
+// TODO: cache reverse mapping
 func ConvertAddressesToSymbols(chain string, addresses []string) ([]string, error) {
 	config, ok := ChainConfigs[chain]
 	if !ok {
