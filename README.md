@@ -17,7 +17,7 @@ Lending and borrowing are separated by design to allow for deposit only protocol
 
 1. Fetch ABI from etherscan or associated block explorer and put in `protocols/{PROTOCOL}/`
 2. If needed, build abigen tool (https://geth.ethereum.org/docs/tools/abigen) and place in `protocols/`
-3. Generate bindings into `protocols/bindings/` with `./abigen --abi cmd/protocols/{PROTOCOL}/{CONTRACT}.json --pkg protocols --type {CONTRACT} --out cmd/protocols/{PROTOCOL}/contract.go`
+3. Generate bindings into `protocols/bindings/` with `./abigen --abi cmd/protocols/PROTOCOL/CONTRACT.json --pkg PROTOCOL --type CONTRACT --out cmd/protocols/PROTOCOL/CONTRACT.go`
 
 ## Notes
 
