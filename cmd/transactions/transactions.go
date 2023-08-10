@@ -49,7 +49,7 @@ func SendTransaction(e *ethclient.Client, signedTx *types.Transaction) (*common.
 }
 
 // Bundles multiple calls into one RPC call and returns the results.
-// Uses aggregate3 (https://github.com/Alethio/web3-multicall-go)
+// Uses aggregate3 (https://github.com/mds1/multicall)
 func HandleMulticall(e *ethclient.Client, calls *[]Multicall3Call3) (*[]Multicall3Result, error) {
 	// Pack aggregated calldata
 	multicallABI, _ := Multicall3MetaData.GetAbi()

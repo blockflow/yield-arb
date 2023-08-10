@@ -34,4 +34,4 @@ For Windows:
 `go run .` to run server
 `go mode tidy` to remove unused dependencies
 
-Uses Multicall to reduce RPC calls. (https://github.com/mds1/multicall#batch-contract-reads)
+Uses Multicall to reduce RPC calls. (https://github.com/mds1/multicall)
