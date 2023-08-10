@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"math/big"
 
-	"yield-arb/cmd/protocols/aavev2"
 	"yield-arb/cmd/protocols/aavev3"
-	"yield-arb/cmd/protocols/compoundv2"
-	"yield-arb/cmd/protocols/compoundv3"
 	t "yield-arb/cmd/protocols/types"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type Protocol interface {
@@ -34,11 +32,11 @@ type Protocol interface {
 	GetMarkets() (*t.ProtocolMarkets, error)
 
 	// Lends the token to the protocol
-	Supply(from string, token string, amount *big.Int) (*common.Hash, error)
+	Supply(from common.Address, token string, amount *big.Int) (*types.Transaction, error)
 	// // Withdraws the token from the protocol
 	// Withdraw(user string, token string, amount *big.Int) error
-	// // Borrows the token from the protocol
-	// Borrow(user string, token string, amount *big.Int) error
+	// Borrows the token from the protocol
+	Borrow(from common.Address, token string, amount *big.Int) (*types.Transaction, error)
 	// // Repays the token to the protocol
 	// Repay(user string, token string, amount *big.Int) error
 
@@ -48,14 +46,14 @@ type Protocol interface {
 
 func GetProtocol(protocol string) (Protocol, error) {
 	switch protocol {
-	case "aavev2":
-		return aavev2.NewAaveV2Protocol(), nil
+	// case "aavev2":
+	// 	return aavev2.NewAaveV2Protocol(), nil
 	case "aavev3":
 		return aavev3.NewAaveV3Protocol(), nil
-	case "compoundv2":
-		return compoundv2.NewCompoundV2Protocol(), nil
-	case "compoundv3":
-		return compoundv3.NewCompoundV3Protocol(), nil
+	// case "compoundv2":
+	// 	return compoundv2.NewCompoundV2Protocol(), nil
+	// case "compoundv3":
+	// 	return compoundv3.NewCompoundV3Protocol(), nil
 	default:
 		return nil, fmt.Errorf("unknown protocol: %s", protocol)
 	}

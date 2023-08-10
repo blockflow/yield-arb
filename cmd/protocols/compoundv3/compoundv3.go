@@ -11,13 +11,14 @@ import (
 	"yield-arb/cmd/utils"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type CompoundV3 struct {
 	chain         string
 	cl            *ethclient.Client
-	chainId       *big.Int
+	chainID       *big.Int
 	cometAddress  common.Address
 	cometContract *Comet
 	baseToken     string // symbol
@@ -81,12 +82,12 @@ func (c *CompoundV3) Connect(chain string) error {
 
 	c.chain = chain
 	c.cl = cl
-	c.chainId = chainId
+	c.chainID = chainId
 	c.cometAddress = cometAddress
 	c.cometContract = cometContract
 	c.baseToken = symbols[0]
 
-	log.Printf("Connected to %v (chainid: %v)", c.chain, c.chainId)
+	log.Printf("Connected to %v (chainid: %v)", c.chain, c.chainID)
 	return nil
 }
 
@@ -351,7 +352,7 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolMarkets, error) {
 }
 
 // // Lends the token to the protocol
-func (c *CompoundV3) Supply(from string, token string, amount *big.Int) (*common.Hash, error) {
+func (c *CompoundV3) Supply(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
 	return nil, nil
 }
 

@@ -2,17 +2,17 @@ package aavev3
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math/big"
 	"time"
 	"yield-arb/cmd/accounts"
-	txs "yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
 
 	t "yield-arb/cmd/protocols/types"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"golang.org/x/exp/slices"
 )
@@ -22,12 +22,12 @@ import (
 type AaveV3 struct {
 	chain                    string
 	cl                       *ethclient.Client
-	chainid                  *big.Int
+	chainID                  *big.Int
 	addressesProviderAddress common.Address
-	poolAddress              string
-	poolABI                  abi.ABI
+	poolAddress              common.Address
 	poolContract             *AaveV3Pool
 	uiPoolDataProviderCaller *AaveV3UIPoolDataProviderCaller
+	wethGatewayTransactor    *WETHGatewayTransactor
 }
 
 const AaveV3Name = "aavev3"
@@ -65,6 +65,11 @@ var uiPoolDataProviders = map[string]string{
 	"arbitrum_goerli": "0x583F04c0C4BDE3D7706e939F3Ea890Be9A20A5CF",
 	"optimism_goerli": "0x9277eFbB991536a98a1aA8b735E9D26d887104C1",
 	"polygon_mumbai":  "0x928d9A76705aA6e4a6650BFb7E7912e413Fe7341",
+}
+
+var wethGatewayAddresses = map[string]string{
+	// Testnets
+	"ethereum_goerli": "0x2a498323acad2971a8b1936fd7540596dc9bbacd",
 }
 
 func (a *AaveV3) GetChains() ([]string, error) {
@@ -108,14 +113,6 @@ func (a *AaveV3) Connect(chain string) error {
 		return err
 	}
 
-	// Instantiate UIPoolDataProvider
-	uiPoolDataProviderAddress := common.HexToAddress(uiPoolDataProviders[chain])
-	uiPoolDataProviderCaller, err := NewAaveV3UIPoolDataProviderCaller(uiPoolDataProviderAddress, cl)
-	if err != nil {
-		log.Printf("Failed to instantiate UIPoolDataProvider: %v", err)
-		return err
-	}
-
 	// Fetch lending pool address
 	lendingPoolAddress, err := addressesProviderCaller.GetPool(nil)
 	if err != nil {
@@ -130,14 +127,31 @@ func (a *AaveV3) Connect(chain string) error {
 		return err
 	}
 
+	// Instantiate UIPoolDataProvider
+	uiPoolDataProviderAddress := common.HexToAddress(uiPoolDataProviders[chain])
+	uiPoolDataProviderCaller, err := NewAaveV3UIPoolDataProviderCaller(uiPoolDataProviderAddress, cl)
+	if err != nil {
+		log.Printf("Failed to instantiate UIPoolDataProvider: %v", err)
+		return err
+	}
+
+	// Instantiate WETHGateway
+	wethGatewayAddress := common.HexToAddress(wethGatewayAddresses[chain])
+	wethGatewayTransactor, err := NewWETHGatewayTransactor(wethGatewayAddress, cl)
+	if err != nil {
+		log.Printf("Failed to instantiate WETHGateway: %v", err)
+		return err
+	}
+
 	a.chain = chain
 	a.cl = cl
-	a.chainid = chainid
+	a.chainID = chainid
 	a.addressesProviderAddress = addressesProviderAddress
-	a.poolAddress = lendingPoolAddress.Hex()
+	a.poolAddress = lendingPoolAddress
 	a.poolContract = poolContract
 	a.uiPoolDataProviderCaller = uiPoolDataProviderCaller
-	log.Printf("%v connected to %v (chainid: %v, pool: %v)", AaveV3Name, a.chain, a.chainid, lendingPoolAddress)
+	a.wethGatewayTransactor = wethGatewayTransactor
+	log.Printf("%v connected to %v (chainid: %v, pool: %v)", AaveV3Name, a.chain, a.chainID, lendingPoolAddress)
 	return nil
 }
 
@@ -281,51 +295,55 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolMarkets, error) {
 }
 
 // Deposits the specified token into the protocol
-func (a *AaveV3) Supply(from string, token string, amount *big.Int) (*common.Hash, error) {
-	methodName := "supply"
-	// TODO: Check allowance
-	assets, err := utils.ConvertSymbolsToAddresses(a.chain, []string{token})
+func (a *AaveV3) Supply(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+	auth, err := accounts.GetAuth(a.cl, a.chainID, from)
 	if err != nil {
-		log.Printf("Failed to convert token symbol to address: %v", err)
-		return nil, err
-	}
-	data, err := a.poolABI.Pack(
-		methodName,
-		common.HexToAddress(assets[0]),
-		amount,
-		common.HexToAddress(from), // onBehalfOf, can update to delegate borrowing to another address
-		uint16(0),
-	)
-	if err != nil {
-		log.Printf("Failed to pack method args: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
 
-	// Build transaction
-	log.Println("Building deposit tx...")
-	tx, err := txs.BuildTransaction(a.cl, from, a.poolAddress, big.NewInt(0), data)
-	if err != nil {
-		log.Printf("Failed to build deposit transaction: %v", err)
-		return nil, err
+	var tx *types.Transaction
+
+	// If ETH, use WETHGateway
+	if token == "ETH" {
+		auth.Value = amount
+		tx, err = a.wethGatewayTransactor.DepositETH(auth, a.poolAddress, from, uint16(0))
+	} else {
+		tx, err = a.poolContract.Supply(auth, a.poolAddress, amount, from, uint16(0))
 	}
 
-	// Sign transaction
-	signedTx, err := accounts.SignTransaction(from, *a.chainid, tx)
 	if err != nil {
-		log.Printf("Failed to sign tx: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to send supply tx: %v", err)
 	}
-
-	// Send transaction
-	hash, err := txs.SendTransaction(a.cl, signedTx)
-	if err != nil {
-		log.Printf("Failed to send deposit tx: %v", err)
-		return nil, err
-	}
-	return hash, nil
+	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
+	return tx, nil
 }
 
-// Borrows the specified token from the protocol
-// func (a *AaveV3) Borrow(from string, token string, amount *big.Int) (*common.Hash, error) {
+// Borrows the specified token from the protocol.
+// Defaults to variable interest rates.
+func (a *AaveV3) Borrow(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+	auth, err := accounts.GetAuth(a.cl, a.chainID, from)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
 
-// }
+	var tx *types.Transaction
+	var txErr error
+
+	// If ETH, use WETHGateway
+	if token == "ETH" {
+		// TODO: implement approvals/delegates (https://goerli.etherscan.io/tx/0x459babead59985f7ca3a7f8de2cd8dd6479ed1b284872926ead1beb6e73e72da)
+		tx, txErr = a.wethGatewayTransactor.BorrowETH(auth, a.poolAddress, amount, big.NewInt(2), uint16(0))
+	} else {
+		assets, err := utils.ConvertSymbolsToAddresses(a.chain, []string{token})
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert symbol: %v", err)
+		}
+		tx, txErr = a.poolContract.Borrow(auth, common.HexToAddress(assets[0]), amount, big.NewInt(2), uint16(0), from)
+	}
+
+	if txErr != nil {
+		return nil, fmt.Errorf("failed to send borrow tx: %v", txErr)
+	}
+	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
+	return tx, nil
+}

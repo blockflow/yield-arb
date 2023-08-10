@@ -16,8 +16,8 @@ var MulticallAddress = common.HexToAddress("0xcA11bde05977b3631167028862bE2a1739
 
 // TODO: Estimate gas price dynamically
 // Fetches tx params and builds the tx.
-func BuildTransaction(e *ethclient.Client, from, to string, amount *big.Int, data []byte) (*types.Transaction, error) {
-	nonce, err := e.PendingNonceAt(context.Background(), common.HexToAddress(from))
+func BuildTransaction(e *ethclient.Client, from, to common.Address, amount *big.Int, data []byte) (*types.Transaction, error) {
+	nonce, err := e.PendingNonceAt(context.Background(), from)
 	if err != nil {
 		log.Printf("Failed to retrieve nonce for %v: %v", from, err)
 		return nil, err
@@ -29,7 +29,7 @@ func BuildTransaction(e *ethclient.Client, from, to string, amount *big.Int, dat
 	}
 	return types.NewTransaction(
 		nonce,
-		common.HexToAddress(to),
+		to,
 		amount,
 		uint64(300000), // gasLimit
 		gasPrice,
