@@ -2,13 +2,15 @@ package compoundv3
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"time"
 	t "yield-arb/cmd/protocols/types"
+	txs "yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -66,7 +68,7 @@ func (c *CompoundV3) Connect(chain string) error {
 	}
 
 	// Get base token symbol
-	baseTokenAddress, err := cometContract.CometCaller.BaseToken(nil)
+	baseTokenAddress, err := cometContract.BaseToken(nil)
 	if err != nil {
 		log.Printf("Failed to fetch base token: %v", err)
 		return err
@@ -89,22 +91,64 @@ func (c *CompoundV3) Connect(chain string) error {
 	return nil
 }
 
-// TODO: Deploy a contract to reduce API calls
+// Uses multicall to reduce RPC calls
 func (c *CompoundV3) getAllAssetInfos() ([]*CometCoreAssetInfo, error) {
+	// Fetch number of assets first
 	numAssets, err := c.cometContract.NumAssets(nil)
 	if err != nil {
-		log.Printf("Failed to fetch num assets: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch num assets: %v", err)
 	}
 
-	result := make([]*CometCoreAssetInfo, numAssets)
+	// Aggregate calldata
+	cometABI, err := CometMetaData.GetAbi()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get comet abi: %v", err)
+	}
+	calls := make([]txs.Multicall3Call3, numAssets)
 	for i := uint8(0); i < numAssets; i++ {
-		if assetInfo, err := c.cometContract.GetAssetInfo(nil, i); err != nil {
-			log.Printf("Failed to get asset info for %v: %v", i, err)
-			return nil, err
-		} else {
-			result[i] = &assetInfo
+		data, err := cometABI.Pack("getAssetInfo", i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack get asset info calldata: %v", err)
 		}
+		calls[i] = txs.Multicall3Call3{
+			Target:   c.cometAddress,
+			CallData: data,
+		}
+	}
+
+	// Pack aggregated calldata
+	multicallABI, _ := txs.Multicall3MetaData.GetAbi()
+	aggData, err := multicallABI.Pack("aggregate3", calls)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack multicall: %v", err)
+	}
+
+	// Call Multicall contract
+	response, err := c.cl.CallContract(context.Background(), ethereum.CallMsg{
+		To:   &txs.MulticallAddress,
+		Data: aggData,
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call multicall: %v", err)
+	}
+
+	// Unpack into Multicall3Result
+	responses := new([]txs.Multicall3Result)
+	if err := multicallABI.UnpackIntoInterface(responses, "aggregate3", response); err != nil {
+		return nil, fmt.Errorf("failed to unpack into results: %v", err)
+	}
+
+	// Unpack into CometCoreAssetInfo
+	type ReturnData struct {
+		Data CometCoreAssetInfo
+	}
+	result := make([]*CometCoreAssetInfo, numAssets)
+	for i, response := range *responses {
+		returnData := new(ReturnData)
+		if err := cometABI.UnpackIntoInterface(returnData, "getAssetInfo", response.ReturnData); err != nil {
+			return nil, fmt.Errorf("failed to unpack asset info: %v", err)
+		}
+		result[i] = &returnData.Data
 	}
 
 	return result, nil
@@ -262,8 +306,7 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolMarkets, error) {
 	// Get all token info
 	allAssetInfos, err := c.getAllAssetInfos()
 	if err != nil {
-		log.Printf("Failed to fetch all asset infos: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch all asset infos: %v", err)
 	}
 
 	// Fill in LTV and APY for collateral tokens
@@ -271,12 +314,9 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolMarkets, error) {
 	for i, assetInfo := range allAssetInfos {
 		symbols, err := utils.ConvertAddressesToSymbols(c.chain, []string{assetInfo.Asset.Hex()})
 		if err != nil {
-			log.Printf("Failed to convert symbol: %v", err)
-			return nil, err
+			return nil, fmt.Errorf("failed to convert symbol: %v", err)
 		} else if len(symbols) == 0 {
-			msg := "token address mapping missing"
-			log.Println(msg)
-			return nil, errors.New(msg)
+			return nil, fmt.Errorf("token address mapping missing")
 		}
 		symbol := symbols[0]
 		// Has LTV, no APY
@@ -292,13 +332,14 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolMarkets, error) {
 	}
 
 	// Base token, has APY, no LTV
+	// TODO: use multicall to bundle these
 	supplyAPY, err := c.getBaseAPR(true)
 	if err != nil {
-		log.Printf("Failed to get supply apr: %v", err)
+		return nil, fmt.Errorf("failed to get supply apr: %v", err)
 	}
 	borrowAPY, err := c.getBaseAPR(false)
 	if err != nil {
-		log.Printf("Failed to get borrow apr: %v", err)
+		return nil, fmt.Errorf("failed to get borrow apr: %v", err)
 	}
 	supplySpecs[len(allAssetInfos)] = &t.TokenSpecs{
 		Protocol: CompoundV3Name,

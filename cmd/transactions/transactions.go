@@ -10,6 +10,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+var MulticallAddress = common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11")
+
 // TODO: Estimate gas price dynamically
 // Fetches tx params and builds the tx.
 func BuildTransaction(e *ethclient.Client, from, to string, amount *big.Int, data []byte) (*types.Transaction, error) {
