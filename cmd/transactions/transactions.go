@@ -2,9 +2,11 @@ package transactions
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math/big"
 
+	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -44,4 +46,32 @@ func SendTransaction(e *ethclient.Client, signedTx *types.Transaction) (*common.
 	}
 	hash := signedTx.Hash()
 	return &hash, nil
+}
+
+// Bundles multiple calls into one RPC call and returns the results.
+// Uses aggregate3 (https://github.com/Alethio/web3-multicall-go)
+func HandleMulticall(e *ethclient.Client, calls *[]Multicall3Call3) (*[]Multicall3Result, error) {
+	// Pack aggregated calldata
+	multicallABI, _ := Multicall3MetaData.GetAbi()
+	aggData, err := multicallABI.Pack("aggregate3", *calls)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack multicall: %v", err)
+	}
+
+	// Call Multicall contract
+	response, err := e.CallContract(context.Background(), ethereum.CallMsg{
+		To:   &MulticallAddress,
+		Data: aggData,
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call multicall: %v", err)
+	}
+
+	// Unpack into Multicall3Result
+	responses := new([]Multicall3Result)
+	if err := multicallABI.UnpackIntoInterface(responses, "aggregate3", response); err != nil {
+		return nil, fmt.Errorf("failed to unpack into results: %v", err)
+	}
+
+	return responses, nil
 }

@@ -10,7 +10,6 @@ import (
 	txs "yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -116,26 +115,10 @@ func (c *CompoundV3) getAllAssetInfos() ([]*CometCoreAssetInfo, error) {
 		}
 	}
 
-	// Pack aggregated calldata
-	multicallABI, _ := txs.Multicall3MetaData.GetAbi()
-	aggData, err := multicallABI.Pack("aggregate3", calls)
+	// Perform multicall
+	responses, err := txs.HandleMulticall(c.cl, &calls)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pack multicall: %v", err)
-	}
-
-	// Call Multicall contract
-	response, err := c.cl.CallContract(context.Background(), ethereum.CallMsg{
-		To:   &txs.MulticallAddress,
-		Data: aggData,
-	}, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to call multicall: %v", err)
-	}
-
-	// Unpack into Multicall3Result
-	responses := new([]txs.Multicall3Result)
-	if err := multicallABI.UnpackIntoInterface(responses, "aggregate3", response); err != nil {
-		return nil, fmt.Errorf("failed to unpack into results: %v", err)
+		return nil, fmt.Errorf("failed to multicall asset info: %v", err)
 	}
 
 	// Unpack into CometCoreAssetInfo
