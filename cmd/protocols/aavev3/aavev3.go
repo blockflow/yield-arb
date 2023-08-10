@@ -223,11 +223,13 @@ func (a *AaveV3) getTokenSpecs(symbols []string, isLending bool) ([]*t.TokenSpec
 				apy = utils.ConvertRayToPercentage(reserveData.VariableBorrowRate)
 			}
 			tokenSpecs = append(tokenSpecs, &t.TokenSpecs{
-				Protocol: AaveV3Name,
-				Chain:    a.chain,
-				Token:    reserveData.Symbol,
-				LTV:      ltv,
-				APY:      apy,
+				Protocol:  AaveV3Name,
+				Chain:     a.chain,
+				Token:     reserveData.Symbol,
+				LTV:       ltv,
+				APY:       apy,
+				SupplyCap: reserveData.SupplyCap,
+				BorrowCap: reserveData.BorrowCap,
 			})
 		}
 	}
@@ -268,18 +270,22 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolMarkets, error) {
 		lendingAPY := utils.ConvertRayToPercentage(reserveData.LiquidityRate)
 		borrowingAPY := utils.ConvertRayToPercentage(reserveData.VariableBorrowRate)
 		lendingSpecs = append(lendingSpecs, &t.TokenSpecs{
-			Protocol: AaveV3Name,
-			Chain:    a.chain,
-			Token:    reserveData.Symbol,
-			LTV:      ltv,
-			APY:      lendingAPY,
+			Protocol:  AaveV3Name,
+			Chain:     a.chain,
+			Token:     reserveData.Symbol,
+			LTV:       ltv,
+			APY:       lendingAPY,
+			SupplyCap: reserveData.SupplyCap,
+			BorrowCap: reserveData.BorrowCap,
 		})
 		borrowingSpecs = append(borrowingSpecs, &t.TokenSpecs{
-			Protocol: AaveV3Name,
-			Chain:    a.chain,
-			Token:    reserveData.Symbol,
-			LTV:      ltv,
-			APY:      borrowingAPY,
+			Protocol:  AaveV3Name,
+			Chain:     a.chain,
+			Token:     reserveData.Symbol,
+			LTV:       ltv,
+			APY:       borrowingAPY,
+			SupplyCap: reserveData.SupplyCap,
+			BorrowCap: reserveData.BorrowCap,
 		})
 	}
 
@@ -304,6 +310,7 @@ func (a *AaveV3) Supply(from common.Address, token string, amount *big.Int) (*ty
 	var tx *types.Transaction
 
 	// If ETH, use WETHGateway
+	// TODO: Update to check for chain native token
 	if token == "ETH" {
 		auth.Value = amount
 		tx, err = a.wethGatewayTransactor.DepositETH(auth, a.poolAddress, from, uint16(0))
@@ -330,6 +337,7 @@ func (a *AaveV3) Borrow(from common.Address, token string, amount *big.Int) (*ty
 	var txErr error
 
 	// If ETH, use WETHGateway
+	// TODO: Update to check for chain native token
 	if token == "ETH" {
 		// TODO: implement approvals/delegates (https://goerli.etherscan.io/tx/0x459babead59985f7ca3a7f8de2cd8dd6479ed1b284872926ead1beb6e73e72da)
 		tx, txErr = a.wethGatewayTransactor.BorrowETH(auth, a.poolAddress, amount, big.NewInt(2), uint16(0))
