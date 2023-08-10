@@ -4,7 +4,8 @@ import (
 	"log"
 	"time"
 	"yield-arb/cmd/arbitrage"
-	"yield-arb/cmd/protocols"
+	p "yield-arb/cmd/protocols"
+	t "yield-arb/cmd/protocols/types"
 )
 
 func main() {
@@ -27,14 +28,14 @@ func main() {
 	// lendingAPYs, _ := p.GetLendingAPYs(symbols)
 	// log.Println(lendingAPYs)
 
-	chains := []string{"polygon"}
+	chains := []string{"arbitrum_goerli"}
 	// chains := []string{"ethereum", "polygon", "avalanche"}
 	// chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
-	var chainPMs []*protocols.ProtocolMarkets
+	var chainPMs []*t.ProtocolMarkets
 	// ps := []string{"compoundv3"}
-	ps := []string{"compoundv3", "aavev3", "aavev2"}
+	ps := []string{"compoundv3", "aavev3"}
 	for _, protocol := range ps {
-		p, err := protocols.GetProtocol(protocol)
+		p, err := p.GetProtocol(protocol)
 		if err != nil {
 			log.Printf("Failed to get protocol: %v", err)
 		}
@@ -46,7 +47,7 @@ func main() {
 	}
 
 	strats, _ := arbitrage.CalculateStrategies(chainPMs)
-	var topStrats = make([][]*protocols.TokenSpecs, 5)
+	var topStrats = make([][]*t.TokenSpecs, 5)
 	copy(topStrats, strats)
 	for _, strat := range topStrats {
 		log.Println()
@@ -67,7 +68,5 @@ func main() {
 	// p.Connect("ethereum_goerli")
 	// p.Deposit("0x18dC22D776aEFefD2538079409176086fcB6C741", "WETH", big.NewInt(1))
 
-	endTime := time.Now()
-	elapsedTime := endTime.Sub(startTime)
-	log.Printf("Time elapsed: %v", elapsedTime)
+	log.Printf("Total time elapsed: %v", time.Since(startTime))
 }

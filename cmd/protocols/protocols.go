@@ -4,6 +4,12 @@ import (
 	"fmt"
 	"math/big"
 
+	"yield-arb/cmd/protocols/aavev2"
+	"yield-arb/cmd/protocols/aavev3"
+	"yield-arb/cmd/protocols/compoundv2"
+	"yield-arb/cmd/protocols/compoundv3"
+	t "yield-arb/cmd/protocols/types"
+
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -20,15 +26,15 @@ type Protocol interface {
 	GetBorrowingTokens() ([]string, error)
 	// Returns the TokenSpecs for the specified tokens
 	// Tokens are represented as their symbols
-	GetLendingSpecs(symbols []string) ([]*TokenSpecs, error)
+	GetLendingSpecs(symbols []string) ([]*t.TokenSpecs, error)
 	// Returns the TokenSpecs for the specified tokens
 	// Tokens are represented as their symbols
-	GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error)
+	GetBorrowingSpecs(symbols []string) ([]*t.TokenSpecs, error)
 	// Returns the markets for the protocol
-	GetMarkets() (*ProtocolMarkets, error)
+	GetMarkets() (*t.ProtocolMarkets, error)
 
 	// Lends the token to the protocol
-	Deposit(from string, token string, amount *big.Int) (*common.Hash, error)
+	Supply(from string, token string, amount *big.Int) (*common.Hash, error)
 	// // Withdraws the token from the protocol
 	// Withdraw(user string, token string, amount *big.Int) error
 	// // Borrows the token from the protocol
@@ -40,40 +46,16 @@ type Protocol interface {
 	// GetAccountData(user string)
 }
 
-type ProtocolMarkets struct {
-	Protocol       string        `json:"protocol"`
-	Chain          string        `json:"chain"`
-	LendingSpecs   []*TokenSpecs `json:"lendingSpecs"`
-	BorrowingSpecs []*TokenSpecs `json:"borrowingSpecs"`
-}
-
-type TokenSpecs struct {
-	Protocol string     `json:"protocol"`
-	Chain    string     `json:"chain"`
-	Token    string     `json:"token"`
-	LTV      *big.Float `json:"ltv"` // 0 if cannot be collateral
-	APY      *big.Float `json:"apy"`
-}
-
-type AccountData struct {
-	TotalCollateralBase         *big.Int `json:"totalCollateralBase"`
-	TotalDebtBase               *big.Int `json:"totalDebtBase"`
-	AvailableBorrowsBase        *big.Int `json:"availableBorrowsBase"`
-	CurrentLiquidationThreshold *big.Int `json:"currentLiquidationThreshold"`
-	LTV                         *big.Int `json:"ltv"`
-	HealthFactor                *big.Int `json:"healthFactor"`
-}
-
 func GetProtocol(protocol string) (Protocol, error) {
 	switch protocol {
 	case "aavev2":
-		return NewAaveV2Protocol(), nil
+		return aavev2.NewAaveV2Protocol(), nil
 	case "aavev3":
-		return NewAaveV3Protocol(), nil
+		return aavev3.NewAaveV3Protocol(), nil
 	case "compoundv2":
-		return NewCompoundV2Protocol(), nil
+		return compoundv2.NewCompoundV2Protocol(), nil
 	case "compoundv3":
-		return NewCompoundV3Protocol(), nil
+		return compoundv3.NewCompoundV3Protocol(), nil
 	default:
 		return nil, fmt.Errorf("unknown protocol: %s", protocol)
 	}

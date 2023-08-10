@@ -1,4 +1,4 @@
-package protocols
+package compoundv2
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	t "yield-arb/cmd/protocols/types"
 	"yield-arb/cmd/utils"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -72,7 +73,7 @@ func (c *CompoundV2) Connect(chain string) error {
 	c.cetherAddress = common.HexToAddress(compv2CetherAddress)
 
 	// Instantiate comptroller
-	comptrollerPath := filepath.Join(dir, "abis", CompoundV2Name, compv2ComptrollerName+".json")
+	comptrollerPath := filepath.Join(dir, compv2ComptrollerName+".json")
 	comptrollerRawABI, err := os.Open(comptrollerPath)
 	if err != nil {
 		log.Printf("Failed to open %v.json: %v", compv2ComptrollerName, err)
@@ -87,7 +88,7 @@ func (c *CompoundV2) Connect(chain string) error {
 	comptrollerContract := bind.NewBoundContract(common.HexToAddress(compv2ComptrollerAddress), comptrollerParsedABI, cl, cl, cl)
 
 	// Instantiate cerc20 abi
-	cerc20Path := filepath.Join(dir, "abis", CompoundV2Name, compv2Cerc20Name+".json")
+	cerc20Path := filepath.Join(dir, compv2Cerc20Name+".json")
 	cerc20RawABI, err := os.Open(cerc20Path)
 	if err != nil {
 		log.Printf("Failed to open %v.json: %v", compv2Cerc20Name, err)
@@ -101,7 +102,7 @@ func (c *CompoundV2) Connect(chain string) error {
 	}
 
 	// Instantiate cether
-	cetherPath := filepath.Join(dir, "abis", CompoundV2Name, "cether.json")
+	cetherPath := filepath.Join(dir, "cether.json")
 	cetherRawABI, err := os.Open(cetherPath)
 	if err != nil {
 		log.Printf("Failed to open %v.json: %v", compv2CetherName, err)
@@ -220,8 +221,8 @@ func (c *CompoundV2) loadCERC20Contract(cerc20Address common.Address) *bind.Boun
 
 // Base method for fetching token specs.
 // Skips ltv if borrow.
-func (c *CompoundV2) getTokenSpecs(symbols []string, rateMethod string) ([]*TokenSpecs, error) {
-	specs := make([]*TokenSpecs, len(symbols))
+func (c *CompoundV2) getTokenSpecs(symbols []string, rateMethod string) ([]*t.TokenSpecs, error) {
+	specs := make([]*t.TokenSpecs, len(symbols))
 	for i, symbol := range symbols {
 		cerc20Address := compv2Markets[symbol]
 		cerc20Contract := c.loadCERC20Contract(cerc20Address)
@@ -267,7 +268,7 @@ func (c *CompoundV2) getTokenSpecs(symbols []string, rateMethod string) ([]*Toke
 		apy.Sub(apy, big.NewFloat(1))
 		apy.Mul(apy, big.NewFloat(100))
 
-		specs[i] = &TokenSpecs{
+		specs[i] = &t.TokenSpecs{
 			Protocol: CompoundV2Name,
 			Chain:    c.chain,
 			Token:    symbol,
@@ -280,18 +281,18 @@ func (c *CompoundV2) getTokenSpecs(symbols []string, rateMethod string) ([]*Toke
 
 // Returns the TokenSpecs for the specified tokens
 // Tokens are represented as their symbols
-func (c *CompoundV2) GetLendingSpecs(symbols []string) ([]*TokenSpecs, error) {
+func (c *CompoundV2) GetLendingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
 	return c.getTokenSpecs(symbols, "supplyRatePerBlock")
 }
 
 // Returns the TokenSpecs for the specified tokens
 // Tokens are represented as their symbols
-func (c *CompoundV2) GetBorrowingSpecs(symbols []string) ([]*TokenSpecs, error) {
+func (c *CompoundV2) GetBorrowingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
 	return c.getTokenSpecs(symbols, "borrowRatePerBlock")
 }
 
 // Returns the markets for the protocol
-func (c *CompoundV2) GetMarkets() (*ProtocolMarkets, error) {
+func (c *CompoundV2) GetMarkets() (*t.ProtocolMarkets, error) {
 	log.Println("Fetching markets...")
 	symbols, err := c.GetLendingTokens()
 	if err != nil {
@@ -305,7 +306,7 @@ func (c *CompoundV2) GetMarkets() (*ProtocolMarkets, error) {
 	if err != nil {
 		log.Printf("Failed to fetch borrowing specs: %v", err)
 	}
-	return &ProtocolMarkets{
+	return &t.ProtocolMarkets{
 		Protocol:       CompoundV2Name,
 		Chain:          c.chain,
 		LendingSpecs:   lendingSpecs,
@@ -314,7 +315,7 @@ func (c *CompoundV2) GetMarkets() (*ProtocolMarkets, error) {
 }
 
 // // Lends the token to the protocol
-func (c *CompoundV2) Deposit(from string, token string, amount *big.Int) (*common.Hash, error) {
+func (c *CompoundV2) Supply(from string, token string, amount *big.Int) (*common.Hash, error) {
 	return nil, nil
 }
 

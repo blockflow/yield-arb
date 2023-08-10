@@ -3,7 +3,7 @@ package arbitrage
 import (
 	"log"
 	"math/big"
-	p "yield-arb/cmd/protocols"
+	t "yield-arb/cmd/protocols/types"
 	"yield-arb/cmd/utils"
 
 	"golang.org/x/exp/slices"
@@ -12,7 +12,7 @@ import (
 var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
 
 // Calculates the net APY for the tokenspec triplets
-func calculateNetAPY(specs []*p.TokenSpecs) *big.Float {
+func calculateNetAPY(specs []*t.TokenSpecs) *big.Float {
 	loanAPY := new(big.Float).Sub(specs[2].APY, specs[1].APY)
 	loanAPY.Mul(loanAPY, specs[0].LTV)
 	loanAPY.Quo(loanAPY, big.NewFloat(100))
@@ -22,7 +22,7 @@ func calculateNetAPY(specs []*p.TokenSpecs) *big.Float {
 
 // Calculates the net APY for any odd number of TokenSpecs.
 // TokenSpecs should be in alternating order of lend/borrow starting with lend.
-func CalculateNetAPYV2(specs []*p.TokenSpecs) *big.Float {
+func CalculateNetAPYV2(specs []*t.TokenSpecs) *big.Float {
 	if len(specs) == 0 {
 		// Base case
 		return big.NewFloat(0)
@@ -45,16 +45,16 @@ func CalculateNetAPYV2(specs []*p.TokenSpecs) *big.Float {
 
 // Compares the two tokenspec triplets' net APYs.
 // Returns true if a is larger than b, false otherwise.
-func moreNetAPY(a, b []*p.TokenSpecs) bool {
+func moreNetAPY(a, b []*t.TokenSpecs) bool {
 	return calculateNetAPY(a).Cmp(calculateNetAPY((b))) == 1
 }
 
 // Calculates the best strategies with dynamic path lengths and ranks them.
 // Limit to max of 3 levels (lends) to reduce interest rate risk.
 // Seeks to maximize: xa + ra(-ya + xb + rb(xc - yb))
-func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs, error) {
+func CalculateStrategiesV2(pms []*t.ProtocolMarkets) (map[string][]*t.TokenSpecs, error) {
 	// Solve 3rd level, max of lend for each asset
-	maxXcs := make(map[string]*p.TokenSpecs)
+	maxXcs := make(map[string]*t.TokenSpecs)
 	for _, pm := range pms {
 		for _, xc := range pm.LendingSpecs {
 			xcSymbol := utils.CommonSymbol(xc.Token)
@@ -71,14 +71,14 @@ func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs
 	// Borrow and 2nd lend assets have to match.
 	// TODO: cache net apys
 	// Can make block recursive to support more levels.
-	maxXbPaths := make(map[string][]*p.TokenSpecs)
+	maxXbPaths := make(map[string][]*t.TokenSpecs)
 	for _, pm := range pms {
 		for _, xb := range pm.LendingSpecs {
 			xbSymbol := utils.CommonSymbol(xb.Token)
 			maxXbPath, ok := maxXbPaths[xbSymbol]
 			// If first or singular lend is better
 			if !ok || xb.APY.Cmp(CalculateNetAPYV2(maxXbPath)) == 1 {
-				maxXbPaths[xbSymbol] = []*p.TokenSpecs{xb}
+				maxXbPaths[xbSymbol] = []*t.TokenSpecs{xb}
 			}
 			// Check 2 level APYs
 			for _, yb := range pm.BorrowingSpecs {
@@ -91,14 +91,14 @@ func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs
 				xbAPY := new(big.Float).Add(xb.APY, nextLevelAPY)
 				// If two levels is better
 				if xbAPY.Cmp(CalculateNetAPYV2(maxXbPaths[xbSymbol])) == 1 {
-					maxXbPaths[xbSymbol] = []*p.TokenSpecs{xb, yb, maxXcPath}
+					maxXbPaths[xbSymbol] = []*t.TokenSpecs{xb, yb, maxXcPath}
 				}
 			}
 		}
 	}
 
 	// Solve 3rd level, max of 3 lends taking into account LTV.
-	maxXaPaths := make(map[string][]*p.TokenSpecs)
+	maxXaPaths := make(map[string][]*t.TokenSpecs)
 	for _, pm := range pms {
 		for _, xa := range pm.LendingSpecs {
 			xaSymbol := utils.CommonSymbol(xa.Token)
@@ -110,7 +110,7 @@ func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs
 			maxXaPath, ok := maxXaPaths[xaSymbol]
 			// If first or singular lend is better
 			if !ok || xa.APY.Cmp(CalculateNetAPYV2(maxXaPath)) == 1 {
-				maxXaPaths[xaSymbol] = []*p.TokenSpecs{xa}
+				maxXaPaths[xaSymbol] = []*t.TokenSpecs{xa}
 			}
 			// Check 2 and 3 level APYs
 			for _, ya := range pm.BorrowingSpecs {
@@ -128,7 +128,7 @@ func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs
 				xaAPY := new(big.Float).Add(xa.APY, nextLevelAPY)
 				// If better
 				if xaAPY.Cmp(CalculateNetAPYV2(maxXaPaths[xaSymbol])) == 1 {
-					maxXaPaths[xaSymbol] = append([]*p.TokenSpecs{xa, ya}, maxXbPath...)
+					maxXaPaths[xaSymbol] = append([]*t.TokenSpecs{xa, ya}, maxXbPath...)
 				}
 			}
 		}
@@ -138,10 +138,10 @@ func CalculateStrategiesV2(pms []*p.ProtocolMarkets) (map[string][]*p.TokenSpecs
 }
 
 // Calculates the strategies and ranks them
-func CalculateStrategies(pms []*p.ProtocolMarkets) ([][]*p.TokenSpecs, error) {
+func CalculateStrategies(pms []*t.ProtocolMarkets) ([][]*t.TokenSpecs, error) {
 	log.Println("Calculating the best yield arb strategies...")
 	// Find best lend rates per token
-	maxTokenLendSpecs := make(map[string]*p.TokenSpecs)
+	maxTokenLendSpecs := make(map[string]*t.TokenSpecs)
 	for _, pm := range pms {
 		for _, spec := range pm.LendingSpecs {
 			// If higher APY found
@@ -153,7 +153,7 @@ func CalculateStrategies(pms []*p.ProtocolMarkets) ([][]*p.TokenSpecs, error) {
 	}
 
 	// Get all approved collateral specs for each market
-	collateralSpecs := make(map[string][]*p.TokenSpecs)
+	collateralSpecs := make(map[string][]*t.TokenSpecs)
 	for _, pm := range pms {
 		market := pm.Protocol + ":" + pm.Chain
 		for _, spec := range pm.LendingSpecs {
@@ -164,14 +164,14 @@ func CalculateStrategies(pms []*p.ProtocolMarkets) ([][]*p.TokenSpecs, error) {
 	}
 
 	// Pair borrow rates with best collateral rates within markets
-	var tokenPairs [][]*p.TokenSpecs
+	var tokenPairs [][]*t.TokenSpecs
 	for _, pm := range pms {
 		market := pm.Protocol + ":" + pm.Chain
 		// Iterate over BorrowingSpecs
 		for _, borrowSpec := range pm.BorrowingSpecs {
 			// Iterate over collateral specs
 			for _, collateralSpec := range collateralSpecs[market] {
-				tokenPairs = append(tokenPairs, []*p.TokenSpecs{
+				tokenPairs = append(tokenPairs, []*t.TokenSpecs{
 					collateralSpec,
 					borrowSpec,
 				})
@@ -180,9 +180,9 @@ func CalculateStrategies(pms []*p.ProtocolMarkets) ([][]*p.TokenSpecs, error) {
 	}
 
 	// Find best strat per pair
-	bestStrats := make([][]*p.TokenSpecs, len(tokenPairs))
+	bestStrats := make([][]*t.TokenSpecs, len(tokenPairs))
 	for i, pair := range tokenPairs {
-		bestStrats[i] = []*p.TokenSpecs{
+		bestStrats[i] = []*t.TokenSpecs{
 			pair[0],
 			pair[1],
 			maxTokenLendSpecs[pair[1].Token],
