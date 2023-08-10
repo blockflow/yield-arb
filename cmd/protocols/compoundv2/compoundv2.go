@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -315,7 +316,7 @@ func (c *CompoundV2) GetMarkets() (*t.ProtocolMarkets, error) {
 }
 
 // // Lends the token to the protocol
-func (c *CompoundV2) Supply(from string, token string, amount *big.Int) (*common.Hash, error) {
+func (c *CompoundV2) Supply(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
 	return nil, nil
 }
 

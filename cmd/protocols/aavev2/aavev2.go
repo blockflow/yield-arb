@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -263,6 +264,6 @@ func (a *AaveV2) GetMarkets() (*t.ProtocolMarkets, error) {
 }
 
 // Deposits the specified token into the protocol
-func (a *AaveV2) Supply(from string, token string, amount *big.Int) (*common.Hash, error) {
+func (a *AaveV2) Supply(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
 	return nil, nil
 }
