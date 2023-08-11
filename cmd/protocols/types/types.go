@@ -10,13 +10,14 @@ type ProtocolMarkets struct {
 }
 
 type TokenSpecs struct {
-	Protocol  string     `json:"protocol"`
-	Chain     string     `json:"chain"`
-	Token     string     `json:"token"`
-	LTV       *big.Float `json:"ltv"` // 0 if cannot be collateral
-	APY       *big.Float `json:"apy"` // Depending on order, could be supply or borrow
-	SupplyCap *big.Int
-	BorrowCap *big.Int
+	Protocol   string     `json:"protocol"`
+	Chain      string     `json:"chain"`
+	Token      string     `json:"token"`
+	LTV        *big.Float `json:"ltv"` // 0 if cannot be collateral
+	APY        *big.Float `json:"apy"` // Depending on order, could be supply or borrow
+	SupplyCap  *big.Float
+	BorrowCap  *big.Float
+	PriceInUSD *big.Float // How much USD is required to purchase 1 ether unit
 }
 
 type AccountData struct {

@@ -2,11 +2,9 @@ package main
 
 import (
 	"log"
-	"math/big"
 	"time"
 	p "yield-arb/cmd/protocols"
-
-	"github.com/ethereum/go-ethereum/common"
+	t "yield-arb/cmd/protocols/types"
 )
 
 func main() {
@@ -29,23 +27,23 @@ func main() {
 	// lendingAPYs, _ := p.GetLendingAPYs(symbols)
 	// log.Println(lendingAPYs)
 
-	// chains := []string{"ethereum_goerli"}
-	// // chains := []string{"ethereum", "polygon", "avalanche"}
-	// // chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
-	// var chainPMs []*t.ProtocolMarkets
-	// ps := []string{"aavev3"}
-	// // ps := []string{"compoundv3", "aavev3"}
-	// for _, protocol := range ps {
-	// 	p, err := p.GetProtocol(protocol)
-	// 	if err != nil {
-	// 		log.Printf("Failed to get protocol: %v", err)
-	// 	}
-	// 	for _, chain := range chains {
-	// 		p.Connect(chain)
-	// 		pms, _ := p.GetMarkets()
-	// 		chainPMs = append(chainPMs, pms)
-	// 	}
-	// }
+	chains := []string{"ethereum"}
+	// chains := []string{"ethereum", "polygon", "avalanche"}
+	// chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
+	var chainPMs []*t.ProtocolMarkets
+	ps := []string{"aavev3"}
+	// ps := []string{"compoundv3", "aavev3"}
+	for _, protocol := range ps {
+		p, err := p.GetProtocol(protocol)
+		if err != nil {
+			log.Printf("Failed to get protocol: %v", err)
+		}
+		for _, chain := range chains {
+			p.Connect(chain)
+			pms, _ := p.GetMarkets()
+			chainPMs = append(chainPMs, pms)
+		}
+	}
 
 	// // strats, _ := arbitrage.CalculateStrategies(chainPMs)
 	// // var topStrats = make([][]*t.TokenSpecs, 5)
@@ -74,12 +72,12 @@ func main() {
 	// }
 
 	// Test Borrow
-	p, _ := p.GetProtocol("aavev3")
-	p.Connect("ethereum_goerli")
-	_, err := p.Borrow(common.HexToAddress("0x18dC22D776aEFefD2538079409176086fcB6C741"), "USDC", big.NewInt(31))
-	if err != nil {
-		log.Printf("failed to borrow: %v", err)
-	}
+	// p, _ := p.GetProtocol("aavev3")
+	// p.Connect("ethereum_goerli")
+	// _, err := p.Borrow(common.HexToAddress("0x18dC22D776aEFefD2538079409176086fcB6C741"), "USDC", big.NewInt(31))
+	// if err != nil {
+	// 	log.Printf("failed to borrow: %v", err)
+	// }
 
 	log.Printf("Total time elapsed: %v", time.Since(startTime))
 }

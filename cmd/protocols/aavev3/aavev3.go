@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"golang.org/x/exp/slices"
 )
 
 // TODO: Account for new features such as isolation mode
@@ -99,6 +98,7 @@ func (a *AaveV3) Connect(chain string) error {
 	}
 
 	// Fetch chainid
+	// TODO: Fetch this in multicall with pool address.
 	chainid, err := cl.ChainID(context.Background())
 	if err != nil {
 		log.Printf("Failed to fetch chainid: %v", err)
@@ -155,94 +155,94 @@ func (a *AaveV3) Connect(chain string) error {
 	return nil
 }
 
-// Returns the symbols of the supported tokens
-func (a *AaveV3) getReservesList() ([]string, error) {
-	addresses, err := a.poolContract.AaveV3PoolCaller.GetReservesList(nil)
-	if err != nil {
-		log.Printf("Failed to fetch reserves list: %v", err)
-		return nil, err
-	}
+// // Returns the symbols of the supported tokens
+// func (a *AaveV3) getReservesList() ([]string, error) {
+// 	addresses, err := a.poolContract.AaveV3PoolCaller.GetReservesList(nil)
+// 	if err != nil {
+// 		log.Printf("Failed to fetch reserves list: %v", err)
+// 		return nil, err
+// 	}
 
-	// Convert to string
-	addressesString := make([]string, len(addresses))
-	for i, address := range addresses {
-		addressesString[i] = address.Hex()
-	}
+// 	// Convert to string
+// 	addressesString := make([]string, len(addresses))
+// 	for i, address := range addresses {
+// 		addressesString[i] = address.Hex()
+// 	}
 
-	// Convert to symbols
-	symbols, err := utils.ConvertAddressesToSymbols(a.chain, addressesString)
-	if err != nil {
-		log.Printf("Failed to convert addresses to symbols: %v", err)
-		return nil, err
-	}
+// 	// Convert to symbols
+// 	symbols, err := utils.ConvertAddressesToSymbols(a.chain, addressesString)
+// 	if err != nil {
+// 		log.Printf("Failed to convert addresses to symbols: %v", err)
+// 		return nil, err
+// 	}
 
-	return symbols, nil
-}
+// 	return symbols, nil
+// }
 
-// GetLendingTokens returns the tokens that can be lent on the given chain
-func (a *AaveV3) GetLendingTokens() ([]string, error) {
-	return a.getReservesList()
-}
+// // GetLendingTokens returns the tokens that can be lent on the given chain
+// func (a *AaveV3) GetLendingTokens() ([]string, error) {
+// 	return a.getReservesList()
+// }
 
-// GetBorrowingTokens returns the tokens that can be borrowed on the given chain
-func (a *AaveV3) GetBorrowingTokens() ([]string, error) {
-	return a.getReservesList()
-}
+// // GetBorrowingTokens returns the tokens that can be borrowed on the given chain
+// func (a *AaveV3) GetBorrowingTokens() ([]string, error) {
+// 	return a.getReservesList()
+// }
 
-// Get the lending TokenSpecs for the specified tokens. Filters out paused tokens.
-func (a *AaveV3) getTokenSpecs(symbols []string, isLending bool) ([]*t.TokenSpecs, error) {
-	addresses, err := utils.ConvertSymbolsToAddresses(a.chain, symbols)
-	if err != nil {
-		log.Printf("Failed to convert symbols to addresses: %v", err)
-		return nil, err
-	}
-	if len(addresses) == 0 {
-		return []*t.TokenSpecs{}, nil
-	}
+// // Get the lending TokenSpecs for the specified tokens. Filters out paused tokens.
+// func (a *AaveV3) getTokenSpecs(symbols []string, isLending bool) ([]*t.TokenSpecs, error) {
+// 	addresses, err := utils.ConvertSymbolsToAddresses(a.chain, symbols)
+// 	if err != nil {
+// 		log.Printf("Failed to convert symbols to addresses: %v", err)
+// 		return nil, err
+// 	}
+// 	if len(addresses) == 0 {
+// 		return []*t.TokenSpecs{}, nil
+// 	}
 
-	// Fetch reserve data for all tokens
-	aggReserveData, _, err := a.uiPoolDataProviderCaller.GetReservesData(nil, a.addressesProviderAddress)
-	if err != nil {
-		log.Printf("Failed to fetch reserve data: %v", err)
-	}
+// 	// Fetch reserve data for all tokens
+// 	aggReserveData, _, err := a.uiPoolDataProviderCaller.GetReservesData(nil, a.addressesProviderAddress)
+// 	if err != nil {
+// 		log.Printf("Failed to fetch reserve data: %v", err)
+// 	}
 
-	// Filter out results for specified symbols
-	var tokenSpecs []*t.TokenSpecs
-	for _, reserveData := range aggReserveData {
-		if reserveData.IsPaused {
-			continue
-		}
+// 	// Filter out results for specified symbols
+// 	var tokenSpecs []*t.TokenSpecs
+// 	for _, reserveData := range aggReserveData {
+// 		if reserveData.IsPaused {
+// 			continue
+// 		}
 
-		if slices.Contains[string](symbols, reserveData.Symbol) {
-			ltv := new(big.Float).SetInt(reserveData.BaseLTVasCollateral)
-			ltv.Quo(ltv, big.NewFloat(100))
-			var apy *big.Float
-			if isLending {
-				apy = utils.ConvertRayToPercentage(reserveData.LiquidityRate)
-			} else {
-				apy = utils.ConvertRayToPercentage(reserveData.VariableBorrowRate)
-			}
-			tokenSpecs = append(tokenSpecs, &t.TokenSpecs{
-				Protocol:  AaveV3Name,
-				Chain:     a.chain,
-				Token:     reserveData.Symbol,
-				LTV:       ltv,
-				APY:       apy,
-				SupplyCap: reserveData.SupplyCap,
-				BorrowCap: reserveData.BorrowCap,
-			})
-		}
-	}
-	return tokenSpecs, nil
-}
+// 		if slices.Contains[string](symbols, reserveData.Symbol) {
+// 			ltv := new(big.Float).SetInt(reserveData.BaseLTVasCollateral)
+// 			ltv.Quo(ltv, big.NewFloat(100))
+// 			var apy *big.Float
+// 			if isLending {
+// 				apy = utils.ConvertRayToPercentage(reserveData.LiquidityRate)
+// 			} else {
+// 				apy = utils.ConvertRayToPercentage(reserveData.VariableBorrowRate)
+// 			}
+// 			tokenSpecs = append(tokenSpecs, &t.TokenSpecs{
+// 				Protocol:  AaveV3Name,
+// 				Chain:     a.chain,
+// 				Token:     reserveData.Symbol,
+// 				LTV:       ltv,
+// 				APY:       apy,
+// 				SupplyCap: new(big.Float).SetInt(reserveData.SupplyCap),
+// 				BorrowCap: new(big.Float).SetInt(reserveData.BorrowCap),
+// 			})
+// 		}
+// 	}
+// 	return tokenSpecs, nil
+// }
 
-func (a *AaveV3) GetLendingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
-	return a.getTokenSpecs(symbols, true)
-}
+// func (a *AaveV3) GetLendingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
+// 	return a.getTokenSpecs(symbols, true)
+// }
 
-func (a *AaveV3) GetBorrowingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
-	return a.getTokenSpecs(symbols, false)
-}
+// func (a *AaveV3) GetBorrowingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
+// 	return a.getTokenSpecs(symbols, false)
+// }
 
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
@@ -269,23 +269,29 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolMarkets, error) {
 		ltv.Quo(ltv, big.NewFloat(100))
 		lendingAPY := utils.ConvertRayToPercentage(reserveData.LiquidityRate)
 		borrowingAPY := utils.ConvertRayToPercentage(reserveData.VariableBorrowRate)
+		supplyCap := new(big.Float).SetInt(reserveData.SupplyCap)
+		borrowCap := new(big.Float).SetInt(reserveData.BorrowCap)
+		priceInUSD := new(big.Float).SetInt(reserveData.PriceInMarketReferenceCurrency)
+		priceInUSD.Quo(priceInUSD, big.NewFloat(100000000))
 		lendingSpecs = append(lendingSpecs, &t.TokenSpecs{
-			Protocol:  AaveV3Name,
-			Chain:     a.chain,
-			Token:     reserveData.Symbol,
-			LTV:       ltv,
-			APY:       lendingAPY,
-			SupplyCap: reserveData.SupplyCap,
-			BorrowCap: reserveData.BorrowCap,
+			Protocol:   AaveV3Name,
+			Chain:      a.chain,
+			Token:      reserveData.Symbol,
+			LTV:        ltv,
+			APY:        lendingAPY,
+			SupplyCap:  supplyCap,
+			BorrowCap:  borrowCap,
+			PriceInUSD: priceInUSD,
 		})
 		borrowingSpecs = append(borrowingSpecs, &t.TokenSpecs{
-			Protocol:  AaveV3Name,
-			Chain:     a.chain,
-			Token:     reserveData.Symbol,
-			LTV:       ltv,
-			APY:       borrowingAPY,
-			SupplyCap: reserveData.SupplyCap,
-			BorrowCap: reserveData.BorrowCap,
+			Protocol:   AaveV3Name,
+			Chain:      a.chain,
+			Token:      reserveData.Symbol,
+			LTV:        ltv,
+			APY:        borrowingAPY,
+			SupplyCap:  supplyCap,
+			BorrowCap:  borrowCap,
+			PriceInUSD: priceInUSD,
 		})
 	}
 

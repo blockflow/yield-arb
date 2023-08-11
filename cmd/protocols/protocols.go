@@ -16,18 +16,18 @@ type Protocol interface {
 	GetChains() ([]string, error)
 	// Connects to the protocol on the specified chain
 	Connect(chain string) error
-	// Returns the tokens supported by the protocol on the specified chain
-	// Tokens are represented as their symbols
-	GetLendingTokens() ([]string, error)
-	// Returns the tokens supported by the protocol on the specified chain
-	// Tokens are represented as their symbols
-	GetBorrowingTokens() ([]string, error)
-	// Returns the TokenSpecs for the specified tokens
-	// Tokens are represented as their symbols
-	GetLendingSpecs(symbols []string) ([]*t.TokenSpecs, error)
-	// Returns the TokenSpecs for the specified tokens
-	// Tokens are represented as their symbols
-	GetBorrowingSpecs(symbols []string) ([]*t.TokenSpecs, error)
+	// // Returns the tokens supported by the protocol on the specified chain
+	// // Tokens are represented as their symbols
+	// GetLendingTokens() ([]string, error)
+	// // Returns the tokens supported by the protocol on the specified chain
+	// // Tokens are represented as their symbols
+	// GetBorrowingTokens() ([]string, error)
+	// // Returns the TokenSpecs for the specified tokens
+	// // Tokens are represented as their symbols
+	// GetLendingSpecs(symbols []string) ([]*t.TokenSpecs, error)
+	// // Returns the TokenSpecs for the specified tokens
+	// // Tokens are represented as their symbols
+	// GetBorrowingSpecs(symbols []string) ([]*t.TokenSpecs, error)
 	// Returns the markets for the protocol
 	GetMarkets() (*t.ProtocolMarkets, error)
 
