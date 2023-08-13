@@ -14,7 +14,8 @@ type TokenSpecs struct {
 	Chain      string     `json:"chain"`
 	Token      string     `json:"token"`
 	LTV        *big.Float `json:"ltv"` // 0 if cannot be collateral
-	APY        *big.Float `json:"apy"` // Depending on order, could be supply or borrow
+	SupplyAPY  *big.Float `json:"supplyApy"`
+	BorrowAPY  *big.Float `json:"borrowApy"`
 	SupplyCap  *big.Float
 	BorrowCap  *big.Float
 	PriceInUSD *big.Float // How much USD is required to purchase 1 ether unit

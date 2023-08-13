@@ -9,14 +9,19 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+type ArbPathLvl struct {
+	TotalAmount *big.Float // In USD
+	Specs       []*t.TokenSpecs
+}
+
 var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
 
 // Calculates the net APY for the tokenspec triplets
 func calculateNetAPY(specs []*t.TokenSpecs) *big.Float {
-	loanAPY := new(big.Float).Sub(specs[2].APY, specs[1].APY)
+	loanAPY := new(big.Float).Sub(specs[2].SupplyAPY, specs[1].BorrowAPY)
 	loanAPY.Mul(loanAPY, specs[0].LTV)
 	loanAPY.Quo(loanAPY, big.NewFloat(100))
-	netAPY := new(big.Float).Add(specs[0].APY, loanAPY)
+	netAPY := new(big.Float).Add(specs[0].SupplyAPY, loanAPY)
 	return netAPY
 }
 
@@ -28,7 +33,7 @@ func CalculateNetAPYV2(specs []*t.TokenSpecs) *big.Float {
 		return big.NewFloat(0)
 	} else if len(specs)%2 == 0 {
 		// Even, intermediate case
-		assetNetAPY := new(big.Float).Sub(specs[1].APY, specs[0].APY)
+		assetNetAPY := new(big.Float).Sub(specs[1].SupplyAPY, specs[0].BorrowAPY)
 		// If borrowing again
 		nextLevelAPY := CalculateNetAPYV2(specs[2:])
 		ltv := new(big.Float).Quo(specs[0].LTV, big.NewFloat(100))
@@ -39,7 +44,7 @@ func CalculateNetAPYV2(specs []*t.TokenSpecs) *big.Float {
 		nextLevelAPY := CalculateNetAPYV2(specs[1:])
 		ltv := new(big.Float).Quo(specs[0].LTV, big.NewFloat(100))
 		nextLevelAPY.Mul(nextLevelAPY, ltv)
-		return new(big.Float).Add(specs[0].APY, nextLevelAPY)
+		return new(big.Float).Add(specs[0].SupplyAPY, nextLevelAPY)
 	}
 }
 
@@ -47,6 +52,150 @@ func CalculateNetAPYV2(specs []*t.TokenSpecs) *big.Float {
 // Returns true if a is larger than b, false otherwise.
 func moreNetAPY(a, b []*t.TokenSpecs) bool {
 	return calculateNetAPY(a).Cmp(calculateNetAPY((b))) == 1
+}
+
+// Returns true if a's Supply APY is larger than b's, false otherwise.
+func moreSupplyAPY(a, b *t.TokenSpecs) bool {
+	return a.SupplyAPY.Cmp(b.SupplyAPY) == 1
+}
+
+// Calculates the weighted avg apy for a list of TokenSpecs.
+// Alternates between supply/borrow.
+func weightedAvgAPY(specs []*t.TokenSpecs) *big.Float {
+	var result *big.Float
+	var totalWeight *big.Float
+	for i, spec := range specs {
+		if i%2 == 1 { // If odd, then supply
+			result.Add(result, new(big.Float).Mul(spec.SupplyCap, spec.SupplyAPY))
+			totalWeight.Add(totalWeight, spec.SupplyCap)
+		} else { // Even, borrow
+			result.Add(result, new(big.Float).Mul(spec.BorrowCap, spec.BorrowAPY))
+			totalWeight.Add(totalWeight, spec.BorrowCap)
+		}
+	}
+	return result.Quo(result, totalWeight)
+}
+
+/*
+Calculates the best strategies with dynamic path lengths and ranks them.
+Limit to max of 3 levels (lends) to reduce interest rate risk.
+Seeks to maximize: xa + ra(-ya + xb + rb(xc - yb)).
+Takes into account supply/borrow caps and will suggest multiple paths
+to support specified amount of base token.
+
+find max Xc paths
+  - group by token
+  - calculate max amount for each group
+  - sort by apy
+
+find max Xb paths
+  - find all singles
+  - find all pairs (with max Xc)
+  - calculate max amount for each group
+  - sort by apy
+
+find max Xa paths
+  - pair all Yas with Xb lists
+  - calculate max amount for each Ya path
+  - combine Yas until collateral amount is met
+    -
+*/
+func CalculateStrategiesV3(pms []*t.ProtocolMarkets, collateralToken string, collateralAmount *big.Float) (map[string][]*ArbPathLvl, error) {
+	// Solve 3rd level, max of lend for each asset
+	// Group by token
+	thirdLvls := make(map[string]*ArbPathLvl)
+	for _, pm := range pms {
+		for _, xc := range pm.LendingSpecs {
+			xcSymbol := utils.CommonSymbol(xc.Token)
+			lvl := thirdLvls[xcSymbol]
+			lvl.Specs = append(lvl.Specs, xc)
+			// Keep track of total amount
+			amount := new(big.Float).Mul(xc.SupplyCap, xc.PriceInUSD)
+			lvl.TotalAmount.Add(lvl.TotalAmount, amount)
+		}
+	}
+	// Sort each group by APY
+	for _, lvl := range thirdLvls {
+		slices.SortFunc[*t.TokenSpecs](lvl.Specs, moreSupplyAPY)
+	}
+
+	// Solve 2nd level, max of 2 lends taking into account LTV.
+	// 1st lend and borrow assets must be from same protocol.
+	// Borrow and 2nd lend assets have to match.
+	// Can make block recursive to support more levels.
+	var secondLvls = make(map[string][]*ArbPathLvl)
+	for _, pm := range pms {
+		for _, xb := range pm.LendingSpecs {
+			xbSymbol := utils.CommonSymbol(xb.Token)
+			lvls := secondLvls[xbSymbol]
+
+			// Add all singles
+			lvls = append(lvls, &ArbPathLvl{
+				Specs:       []*t.TokenSpecs{xb},
+				TotalAmount: xb.SupplyCap,
+			})
+
+			// Add all pairs, including total amounts
+			for _, yb := range pm.BorrowingSpecs {
+				xcGroup := thirdLvls[yb.Token]
+				// Total amount is min of (xb,yb,and xc)
+				minAmountUSD := new(big.Float).Mul(xb.SupplyCap, xb.PriceInUSD)
+				// Take xb's LTV into account
+				ybAmountAdjustedUSD := new(big.Float).Quo(yb.BorrowCap, xb.LTV)
+				ybAmountAdjustedUSD.Mul(ybAmountAdjustedUSD, yb.PriceInUSD)
+				if ybAmountAdjustedUSD.Cmp(minAmountUSD) == 1 {
+					minAmountUSD = ybAmountAdjustedUSD
+				}
+				// Add on xc group
+				xcAmountAdjustedUSD := new(big.Float).Quo(xcGroup.TotalAmount, xb.LTV)
+				xcAmountAdjustedUSD.Mul(xcAmountAdjustedUSD, xcGroup.Specs[0].PriceInUSD)
+				if xcAmountAdjustedUSD.Cmp(minAmountUSD) == 1 {
+					minAmountUSD = xcAmountAdjustedUSD
+				}
+				lvls = append(lvls, &ArbPathLvl{
+					TotalAmount: minAmountUSD,
+					Specs:       []*t.TokenSpecs{xb, yb, xcGroup.Specs},
+				})
+			}
+		}
+	}
+
+	// TODO: Sort second lvls
+
+	// Solve 3rd level, max of 3 lends taking into account LTV.
+	// - pair all Yas with Xb lists
+	// - calculate max amount for each Ya path
+	// - combine Yas until collateral amount is met
+	firstLvls := make(map[string][]*ArbPathLvl)
+	for _, pm := range pms {
+		for _, xa := range pm.LendingSpecs {
+			xaSymbol := utils.CommonSymbol(xa.Token)
+			// Check if approved collateral
+			if !slices.Contains(ApprovedCollateralTokens, xaSymbol) {
+				continue
+			}
+
+			lvls := firstLvls[xaSymbol]
+			// Add singular
+			lvls = append(lvls, &ArbPathLvl{
+				TotalAmount: new(big.Float).Mul(xa.SupplyCap, xa.PriceInUSD),
+				Specs:       []*t.TokenSpecs{xa},
+			})
+			// Add second lvls
+			for _, ya := range pm.BorrowingSpecs {
+				// Calculate xa + ra(maxXbPath - ya)
+				yaSymbol := utils.CommonSymbol(ya.Token)
+				maxXbPath, ok := secondLvls[yaSymbol]
+				if !ok {
+					// No additional path
+					continue
+				}
+				log.Print(maxXbPath)
+			}
+		}
+	}
+
+	return firstLvls, nil
 }
 
 // Calculates the best strategies with dynamic path lengths and ranks them.
