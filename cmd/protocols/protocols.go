@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"yield-arb/cmd/protocols/aavev3"
+	"yield-arb/cmd/protocols/compoundv3"
 	t "yield-arb/cmd/protocols/types"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -52,8 +53,8 @@ func GetProtocol(protocol string) (Protocol, error) {
 		return aavev3.NewAaveV3Protocol(), nil
 	// case "compoundv2":
 	// 	return compoundv2.NewCompoundV2Protocol(), nil
-	// case "compoundv3":
-	// 	return compoundv3.NewCompoundV3Protocol(), nil
+	case "compoundv3":
+		return compoundv3.NewCompoundV3Protocol(), nil
 	default:
 		return nil, fmt.Errorf("unknown protocol: %s", protocol)
 	}
