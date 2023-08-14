@@ -29,7 +29,7 @@ type Protocol interface {
 	// // Tokens are represented as their symbols
 	// GetBorrowingSpecs(symbols []string) ([]*t.TokenSpecs, error)
 	// Returns the markets for the protocol
-	GetMarkets() (*t.ProtocolMarkets, error)
+	GetMarkets() (*t.ProtocolChain, error)
 
 	// Lends the token to the protocol
 	Supply(from common.Address, token string, amount *big.Int) (*types.Transaction, error)

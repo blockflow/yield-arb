@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"time"
+	"yield-arb/cmd/arbitrage"
 	p "yield-arb/cmd/protocols"
 	t "yield-arb/cmd/protocols/types"
 )
@@ -30,7 +31,7 @@ func main() {
 	chains := []string{"ethereum"}
 	// chains := []string{"ethereum", "polygon", "avalanche"}
 	// chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
-	var chainPMs []*t.ProtocolMarkets
+	var chainPMs []*t.ProtocolChain
 	ps := []string{"aavev3"}
 	// ps := []string{"compoundv3", "aavev3"}
 	for _, protocol := range ps {
@@ -55,13 +56,13 @@ func main() {
 	// // 	}
 	// // }
 
-	// stratsV2, _ := arbitrage.CalculateStrategiesV2(chainPMs)
-	// for collateral, specs := range stratsV2 {
-	// 	log.Printf("%v: %v", collateral, arbitrage.CalculateNetAPYV2(specs))
-	// 	for _, spec := range specs {
-	// 		log.Print(*spec)
-	// 	}
-	// }
+	stratsV2, _ := arbitrage.CalculateStrategiesV2(chainPMs)
+	for collateral, specs := range stratsV2 {
+		log.Printf("%v: %v", collateral, arbitrage.CalculateNetAPYV2(specs))
+		for _, spec := range specs {
+			log.Print(*spec)
+		}
+	}
 
 	// Test Deposit()
 	// p, _ := p.GetProtocol("aavev3")

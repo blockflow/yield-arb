@@ -2,14 +2,14 @@ package types
 
 import "math/big"
 
-type ProtocolMarkets struct {
-	Protocol       string        `json:"protocol"`
-	Chain          string        `json:"chain"`
-	LendingSpecs   []*TokenSpecs `json:"lendingSpecs"`
-	BorrowingSpecs []*TokenSpecs `json:"borrowingSpecs"`
+type ProtocolChain struct {
+	Protocol      string        `json:"protocol"`
+	Chain         string        `json:"chain"`
+	SupplyMarkets []*MarketInfo `json:"lendingSpecs"`
+	BorrowMarkets []*MarketInfo `json:"borrowingSpecs"`
 }
 
-type TokenSpecs struct {
+type MarketInfo struct {
 	Protocol   string     `json:"protocol"`
 	Chain      string     `json:"chain"`
 	Token      string     `json:"token"`
