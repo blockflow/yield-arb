@@ -65,13 +65,12 @@ func calcMarketsCap(markets []*t.MarketInfo) *big.Float {
 		subCapUSD := calcMarketsCap(markets[1:])
 		currentCapUSD := new(big.Float).Mul(currentMarket.BorrowCap, currentMarket.PriceInUSD)
 		if currentCapUSD.Cmp(subCapUSD) == -1 {
-			// Convert to USD
-			return currentCapUSD.Quo(currentCapUSD, currentMarket.LTV)
+			return currentCapUSD
 		} else {
-			return subCapUSD.Quo(subCapUSD, currentMarket.LTV)
+			return subCapUSD
 		}
 	} else { // Lend
-		subCap := calcMarketsCap(markets[1:])
+		subCap := new(big.Float).Quo(calcMarketsCap(markets[1:]), currentMarket.LTV)
 		currentCapUSD := new(big.Float).Mul(currentMarket.SupplyCap, currentMarket.PriceInUSD)
 		if currentMarket.SupplyCap.Cmp(subCap) == -1 {
 			return currentCapUSD

@@ -28,7 +28,7 @@ func main() {
 	// lendingAPYs, _ := p.GetLendingAPYs(symbols)
 	// log.Println(lendingAPYs)
 
-	chains := []string{"arbitrum_goerli"}
+	chains := []string{"arbitrum"}
 	// chains := []string{"ethereum", "polygon", "avalanche"}
 	// chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
 	var chainPMs []*t.ProtocolChain
@@ -41,7 +41,10 @@ func main() {
 		}
 		for _, chain := range chains {
 			p.Connect(chain)
-			pms, _ := p.GetMarkets()
+			pms, err := p.GetMarkets()
+			if err != nil {
+				log.Println("failed to get markets: %v", err)
+			}
 			chainPMs = append(chainPMs, pms)
 		}
 	}
@@ -56,6 +59,7 @@ func main() {
 	// // 	}
 	// // }
 
+	log.Println("Calculating strategy v2...")
 	stratsV2, _ := arbitrage.CalculateStrategiesV2(chainPMs)
 	caps := arbitrage.CalculateStratV2CapsUSD(stratsV2)
 	for collateral, specs := range stratsV2 {

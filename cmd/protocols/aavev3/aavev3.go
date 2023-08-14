@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"math/big"
 	"time"
 	"yield-arb/cmd/accounts"
@@ -180,7 +181,13 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 		lendingAPY := utils.ConvertRayToPercentage(reserveData.LiquidityRate)
 		borrowingAPY := utils.ConvertRayToPercentage(reserveData.VariableBorrowRate)
 		supplyCap := new(big.Float).SetInt(reserveData.SupplyCap)
+		if supplyCap.Cmp(big.NewFloat(0)) == 0 { // Infinite cap
+			supplyCap = big.NewFloat(math.MaxFloat64)
+		}
 		borrowCap := new(big.Float).SetInt(reserveData.BorrowCap)
+		if borrowCap.Cmp(big.NewFloat(0)) == 0 { // Cap is liquidity
+			borrowCap = new(big.Float).SetInt(reserveData.AvailableLiquidity)
+		}
 		priceInUSD := new(big.Float).SetInt(reserveData.PriceInMarketReferenceCurrency)
 		priceInUSD.Quo(priceInUSD, big.NewFloat(100000000))
 		market := &t.MarketInfo{

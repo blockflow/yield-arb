@@ -17,15 +17,20 @@ import (
 )
 
 type CompoundV3 struct {
-	chain         string
-	cl            *ethclient.Client
-	chainID       *big.Int
-	cometAddress  common.Address
-	cometContract *Comet
-	baseToken     string // symbol
+	chain          string
+	cl             *ethclient.Client
+	chainID        *big.Int
+	configAddress  common.Address
+	configContract *Configurator
+	cometAddress   common.Address
+	cometContract  *Comet
 }
 
 const CompoundV3Name = "CompoundV3"
+
+var compv3ConfigAddresses = map[string]string{
+	"arbitrum": "0xb21b06D71c75973babdE35b49fFDAc3F82Ad3775",
+}
 
 var compv3CometAddresses = map[string]string{
 	"arbitrum":        "0xA5EDBDD9646f8dFF606d7448e414884C7d905dCA",
@@ -60,6 +65,14 @@ func (c *CompoundV3) Connect(chain string) error {
 		return err
 	}
 
+	// Instantiate configurator
+	configAddress := common.HexToAddress(compv3ConfigAddresses[chain])
+	configContract, err := NewConfigurator(configAddress, cl)
+	if err != nil {
+		log.Printf("Failed to instantiate configurator: %v", err)
+		return err
+	}
+
 	// Instantiate comet
 	cometAddress := common.HexToAddress(compv3CometAddresses[chain])
 	cometContract, err := NewComet(cometAddress, cl)
@@ -68,75 +81,16 @@ func (c *CompoundV3) Connect(chain string) error {
 		return err
 	}
 
-	// Get base token symbol
-	baseTokenAddress, err := cometContract.BaseToken(nil)
-	if err != nil {
-		log.Printf("Failed to fetch base token: %v", err)
-		return err
-	}
-
-	symbols, err := utils.ConvertAddressesToSymbols(chain, []string{baseTokenAddress.Hex()})
-	if err != nil {
-		log.Printf("Failed to convert base token: %v", err)
-		return err
-	}
-
 	c.chain = chain
 	c.cl = cl
 	c.chainID = chainId
+	c.configAddress = configAddress
+	c.configContract = configContract
 	c.cometAddress = cometAddress
 	c.cometContract = cometContract
-	c.baseToken = symbols[0]
 
 	log.Printf("%v connected to %v (chainid: %v)", CompoundV3Name, c.chain, c.chainID)
 	return nil
-}
-
-// Uses multicall to reduce RPC calls
-func (c *CompoundV3) getAllAssetInfos() ([]*CometCoreAssetInfo, error) {
-	// Fetch number of assets first
-	numAssets, err := c.cometContract.NumAssets(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch num assets: %v", err)
-	}
-
-	// Aggregate calldata
-	cometABI, err := CometMetaData.GetAbi()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get comet abi: %v", err)
-	}
-	calls := make([]txs.Multicall3Call3, numAssets)
-	for i := uint8(0); i < numAssets; i++ {
-		data, err := cometABI.Pack("getAssetInfo", i)
-		if err != nil {
-			return nil, fmt.Errorf("failed to pack get asset info calldata: %v", err)
-		}
-		calls[i] = txs.Multicall3Call3{
-			Target:   c.cometAddress,
-			CallData: data,
-		}
-	}
-
-	// Perform multicall
-	responses, err := txs.HandleMulticall(c.cl, &calls)
-	if err != nil {
-		return nil, fmt.Errorf("failed to multicall asset info: %v", err)
-	}
-
-	// Unpack into CometCoreAssetInfo
-	type ReturnData struct {
-		Data CometCoreAssetInfo
-	}
-	result := make([]*CometCoreAssetInfo, numAssets)
-	for i, response := range *responses {
-		returnData := new(ReturnData)
-		if err := cometABI.UnpackIntoInterface(returnData, "getAssetInfo", response.ReturnData); err != nil {
-			return nil, fmt.Errorf("failed to unpack asset info: %v", err)
-		}
-		result[i] = &returnData.Data
-	}
-
-	return result, nil
 }
 
 // Uses multicall to reduce RPC calls
@@ -182,24 +136,19 @@ func (c *CompoundV3) getPrices(pfs []common.Address) ([]*big.Float, error) {
 }
 
 /*
-method: getSupplyRate
 Seconds Per Year = 60 * 60 * 24 * 365
 Utilization = getUtilization()
 Supply Rate = getSupplyRate(Utilization)
 Supply APR = Supply Rate / (10 ^ 18) * Seconds Per Year * 100
 
-method: getBorrowRate
-Seconds Per Year = 60 * 60 * 24 * 365
-Utilization = getUtilization()
-Borrow Rate = getBorrowRate(Utilization)
-Borrow APR = Borrow Rate / (10 ^ 18) * Seconds Per Year * 100
+SupplyRate, BorrowRate, BorrowCap (available base)
 */
-func (c *CompoundV3) getBaseAPRs() (*big.Float, *big.Float, error) {
+func (c *CompoundV3) getBaseStats() (*big.Float, *big.Float, *big.Float, error) {
 	// Get utilization
 	utilization, err := c.cometContract.GetUtilization(nil)
 	if err != nil {
 		log.Printf("Failed to get utilization: %v", err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Get supply rate
@@ -222,30 +171,36 @@ func (c *CompoundV3) getBaseAPRs() (*big.Float, *big.Float, error) {
 	supplyRate.Quo(supplyRate, utils.ETHMantissa)
 	borrowRate.Quo(borrowRate, utils.ETHMantissa)
 
-	return supplyRate, borrowRate, nil
+	// Get total supply
+	totalSupply, err := c.cometContract.TotalSupply(nil)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to fetch total supply: %v", err)
+	}
+	borrowCap := new(big.Float).SetInt(utilization.Mul(utilization, totalSupply))
+
+	return supplyRate, borrowRate, borrowCap, nil
 }
 
 // Returns the markets for the protocol
 func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
+	log.Printf("Fetching market data for %v...", c.chain)
 	startTime := time.Now()
-	log.Println("Fetching markets...")
+
+	// Get config
+	config, err := c.configContract.GetConfiguration(nil, c.cometAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch configuration: %v", err)
+	}
 
 	// Get all token info
-	allAssetInfos, err := c.getAllAssetInfos()
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch all asset infos: %v", err)
-	}
-	numAssets := len(allAssetInfos)
+	numAssets := len(config.AssetConfigs)
 
 	// Get prices
 	pfs := make([]common.Address, numAssets+1)
-	for i, assetInfo := range allAssetInfos {
+	for i, assetInfo := range config.AssetConfigs {
 		pfs[i] = assetInfo.PriceFeed
 	}
-	pfs[numAssets], err = c.cometContract.BaseTokenPriceFeed(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get base token price feed: %v", err)
-	}
+	pfs[numAssets] = config.BaseTokenPriceFeed
 	prices, err := c.getPrices(pfs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch all prices: %v", err)
@@ -253,7 +208,7 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 
 	// Fill in LTV and APY for collateral tokens
 	supplyMarkets := make([]*t.MarketInfo, numAssets+1)
-	for i, assetInfo := range allAssetInfos {
+	for i, assetInfo := range config.AssetConfigs {
 		symbols, err := utils.ConvertAddressesToSymbols(c.chain, []string{assetInfo.Asset.Hex()})
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert symbol: %v", err)
@@ -278,20 +233,23 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 	}
 
 	// Base token, has APY, no LTV
-	// TODO: use multicall to bundle these
-	supplyAPY, borrowAPY, err := c.getBaseAPRs()
+	symbols, err := utils.ConvertAddressesToSymbols(c.chain, []string{config.BaseToken.Hex()})
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert base address to token: %v", err)
+	}
+	supplyAPY, borrowAPY, borrowCap, err := c.getBaseStats()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get base aprs: %v", err)
 	}
 	market := &t.MarketInfo{
 		Protocol:   CompoundV3Name,
 		Chain:      c.chain,
-		Token:      c.baseToken,
+		Token:      symbols[0],
 		LTV:        big.NewFloat(0),
 		SupplyAPY:  supplyAPY,
 		BorrowAPY:  borrowAPY,
 		SupplyCap:  big.NewFloat(math.MaxFloat64),
-		BorrowCap:  big.NewFloat(0),
+		BorrowCap:  borrowCap,
 		PriceInUSD: prices[numAssets],
 	}
 	supplyMarkets[numAssets] = market
