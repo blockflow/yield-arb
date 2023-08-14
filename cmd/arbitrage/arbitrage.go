@@ -11,7 +11,7 @@ import (
 
 type ArbPathLvl struct {
 	TotalAmount *big.Float // In USD
-	Specs       []*t.TokenSpecs
+	NextLvls    []*ArbPathLvl
 }
 
 var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
