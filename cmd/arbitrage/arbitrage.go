@@ -54,6 +54,41 @@ func moreNetAPY(a, b []*t.MarketInfo) bool {
 	return calculateNetAPY(a).Cmp(calculateNetAPY((b))) == 1
 }
 
+// Calculates the markets' min cap in USD.
+func calcMarketsCap(markets []*t.MarketInfo) *big.Float {
+	currentMarket := markets[0]
+	marketsLen := len(markets)
+	if marketsLen == 1 { // Base case, lend
+		return new(big.Float).Mul(currentMarket.SupplyCap, currentMarket.PriceInUSD)
+	} else if marketsLen%2 == 0 { // Borrow
+		// Return the min
+		subCapUSD := calcMarketsCap(markets[1:])
+		currentCapUSD := new(big.Float).Mul(currentMarket.BorrowCap, currentMarket.PriceInUSD)
+		if currentCapUSD.Cmp(subCapUSD) == 1 {
+			// Convert to USD
+			return currentCapUSD.Quo(currentCapUSD, currentMarket.LTV)
+		} else {
+			return subCapUSD.Quo(subCapUSD, currentMarket.LTV)
+		}
+	} else { // Lend
+		subCap := calcMarketsCap(markets[1:])
+		currentCapUSD := new(big.Float).Mul(currentMarket.SupplyCap, currentMarket.PriceInUSD)
+		if currentMarket.SupplyCap.Cmp(subCap) == 1 {
+			return currentCapUSD
+		} else {
+			return subCap
+		}
+	}
+}
+
+func CalculateStratV2CapsUSD(strat map[string][]*t.MarketInfo) map[string]*big.Float {
+	result := make(map[string]*big.Float)
+	for collateral, markets := range strat {
+		result[collateral] = calcMarketsCap(markets)
+	}
+	return result
+}
+
 // Calculates the best strategies with dynamic path lengths and ranks them.
 // Limit to max of 3 levels (lends) to reduce interest rate risk.
 // Seeks to maximize: xa + ra(-ya + xb + rb(xc - yb))

@@ -57,8 +57,10 @@ func main() {
 	// // }
 
 	stratsV2, _ := arbitrage.CalculateStrategiesV2(chainPMs)
+	caps := arbitrage.CalculateStratV2CapsUSD(stratsV2)
 	for collateral, specs := range stratsV2 {
 		log.Printf("%v: %v", collateral, arbitrage.CalculateNetAPYV2(specs))
+		log.Printf("Cap in USD: $%v", caps[collateral])
 		for _, spec := range specs {
 			log.Print(*spec)
 		}
