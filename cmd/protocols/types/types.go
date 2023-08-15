@@ -17,8 +17,8 @@ type MarketInfo struct {
 	LTV        *big.Float `json:"ltv"` // 0 if cannot be collateral
 	SupplyAPY  *big.Float `json:"supplyApy"`
 	BorrowAPY  *big.Float `json:"borrowApy"`
-	SupplyCap  *big.Float // In ether units
-	BorrowCap  *big.Float // In ether units
+	SupplyCap  *big.Float // In ether units, availability remaining
+	BorrowCap  *big.Float // In ether units, availability remaining
 	PriceInUSD *big.Float // How much USD is required to purchase 1 ether unit
 }
 

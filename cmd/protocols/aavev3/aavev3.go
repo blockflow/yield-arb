@@ -2,7 +2,6 @@ package aavev3
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -173,8 +172,6 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 	var supplyMarkets []*t.MarketInfo
 	var borrowMarkets []*t.MarketInfo
 	for _, reserveData := range aggReserveData {
-		prettyReserveData, _ := json.MarshalIndent(reserveData, "", "  ")
-		log.Print(string(prettyReserveData))
 		if reserveData.IsPaused {
 			continue
 		}
@@ -204,6 +201,7 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 			Protocol:   AaveV3Name,
 			Chain:      a.chain,
 			Token:      reserveData.Symbol,
+			Decimals:   uint8(reserveData.Decimals.Int64()),
 			LTV:        ltv,
 			SupplyAPY:  lendingAPY,
 			BorrowAPY:  borrowingAPY,

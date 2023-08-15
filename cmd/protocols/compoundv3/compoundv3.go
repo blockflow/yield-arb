@@ -39,6 +39,11 @@ var compv3CometAddresses = map[string]string{
 	"polygon_mumbai":  "0xF09F0369aB0a875254fB565E52226c88f10Bc839",
 }
 
+var decimals = map[string]uint8{
+	"ETH":    18,
+	"USDC.e": 8,
+}
+
 func NewCompoundV3Protocol() *CompoundV3 {
 	return &CompoundV3{}
 }
@@ -129,7 +134,9 @@ func (c *CompoundV3) getPrices(pfs []common.Address) ([]*big.Float, error) {
 		if err := cometABI.UnpackIntoInterface(returnData, "getPrice", response.ReturnData); err != nil {
 			return nil, fmt.Errorf("failed to unpack asset info: %v", err)
 		}
-		result[i] = new(big.Float).SetInt(returnData.Data)
+		// Prices have 8 decimals for compv3
+		price := new(big.Int).Quo(returnData.Data, big.NewInt(100000000))
+		result[i] = new(big.Float).SetInt(price)
 	}
 
 	return result, nil
@@ -176,9 +183,18 @@ func (c *CompoundV3) getBaseStats() (*big.Float, *big.Float, *big.Float, error) 
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to fetch total supply: %v", err)
 	}
-	borrowCap := new(big.Float).SetInt(utilization.Mul(utilization, totalSupply))
+	log.Print(utilization)
+	log.Print(totalSupply)
+	utilFloat := new(big.Float).SetInt(utilization)
+	utilizationPerc := utilFloat.Quo(utilFloat, utils.ETHMantissa)
+	totalSupplyAdjustedInt := totalSupply.Quo(totalSupply, big.NewInt(1000000)) // Base factor for compv3 decimals
+	totalSupplyAdjusted := new(big.Float).SetInt(totalSupplyAdjustedInt)
+	log.Print(utilizationPerc)
+	log.Print(totalSupplyAdjusted)
+	amountBorrowed := utilizationPerc.Mul(utilizationPerc, totalSupplyAdjusted)
+	availableLiquidity := new(big.Float).Sub(totalSupplyAdjusted, amountBorrowed)
 
-	return supplyRate, borrowRate, borrowCap, nil
+	return supplyRate, borrowRate, availableLiquidity, nil
 }
 
 // Returns the markets for the protocol
@@ -216,17 +232,21 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 			return nil, fmt.Errorf("token address mapping missing")
 		}
 		symbol := symbols[0]
+		decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(assetInfo.Decimals)), nil)
 		// Has LTV, no APY
 		ltv := big.NewFloat(float64(assetInfo.BorrowCollateralFactor))
 		ltv.Quo(ltv, big.NewFloat(10000000000000000))
+		supplyCapInt := new(big.Int).Quo(assetInfo.SupplyCap, decimals)
+		// TODO: Subtract amount supplied from supply cap
 		supplyMarkets[i] = &t.MarketInfo{
 			Protocol:   CompoundV3Name,
 			Chain:      c.chain,
 			Token:      symbol,
+			Decimals:   assetInfo.Decimals,
 			LTV:        ltv,
 			SupplyAPY:  big.NewFloat(0),
 			BorrowAPY:  big.NewFloat(0),
-			SupplyCap:  new(big.Float).SetInt(assetInfo.SupplyCap),
+			SupplyCap:  new(big.Float).SetInt(supplyCapInt),
 			BorrowCap:  big.NewFloat(0),
 			PriceInUSD: prices[i],
 		}
@@ -238,13 +258,16 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 		return nil, fmt.Errorf("failed to convert base address to token: %v", err)
 	}
 	supplyAPY, borrowAPY, borrowCap, err := c.getBaseStats()
+	log.Print(symbols[0], " ", borrowCap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get base aprs: %v", err)
 	}
+	decimals := decimals[symbols[0]]
 	market := &t.MarketInfo{
 		Protocol:   CompoundV3Name,
 		Chain:      c.chain,
 		Token:      symbols[0],
+		Decimals:   decimals,
 		LTV:        big.NewFloat(0),
 		SupplyAPY:  supplyAPY,
 		BorrowAPY:  borrowAPY,
