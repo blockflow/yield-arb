@@ -9,11 +9,6 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-type ArbPathLvl struct {
-	TotalAmount *big.Float // In USD
-	Specs       []*t.MarketInfo
-}
-
 var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
 
 // Calculates the net APY for the tokenspec triplets
