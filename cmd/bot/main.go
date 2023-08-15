@@ -33,7 +33,7 @@ func main() {
 	// chains := []string{"ethereum", "polygon", "avalanche"}
 	// chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
 	var chainPMs []*t.ProtocolChain
-	ps := []string{"compoundv3"}
+	ps := []string{"aavev3", "compoundv3"}
 	// ps := []string{"compoundv3", "aavev3"}
 	for _, protocol := range ps {
 		p, err := p.GetProtocol(protocol)

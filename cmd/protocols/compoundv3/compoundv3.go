@@ -142,6 +142,49 @@ func (c *CompoundV3) getPrices(pfs []common.Address) ([]*big.Float, error) {
 	return result, nil
 }
 
+// Returns the amount supplied for each token.
+func (c *CompoundV3) getTotalsCollateral(assets []CometConfigurationAssetConfig) ([]*big.Int, error) {
+	// Aggregate calldata
+	cometABI, err := CometMetaData.GetAbi()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get comet abi: %v", err)
+	}
+	numAssets := len(assets)
+	calls := make([]txs.Multicall3Call3, numAssets)
+	for i, asset := range assets {
+		data, err := cometABI.Pack("totalsCollateral", asset.Asset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack totals collateral calldata: %v", err)
+		}
+		calls[i] = txs.Multicall3Call3{
+			Target:   c.cometAddress,
+			CallData: data,
+		}
+	}
+
+	// Perform multicall
+	responses, err := txs.HandleMulticall(c.cl, &calls)
+	if err != nil {
+		return nil, fmt.Errorf("failed to multicall asset info: %v", err)
+	}
+
+	// Unpack into CometCoreAssetInfo
+	type ReturnData struct {
+		TotalSupplyAsset *big.Int
+		Reserved         *big.Int
+	}
+	result := make([]*big.Int, numAssets)
+	for i, response := range *responses {
+		returnData := new(ReturnData)
+		if err := cometABI.UnpackIntoInterface(returnData, "totalsCollateral", response.ReturnData); err != nil {
+			return nil, fmt.Errorf("failed to unpack totalsCollateral: %v", err)
+		}
+		result[i] = returnData.TotalSupplyAsset
+	}
+
+	return result, nil
+}
+
 /*
 Seconds Per Year = 60 * 60 * 24 * 365
 Utilization = getUtilization()
@@ -183,14 +226,10 @@ func (c *CompoundV3) getBaseStats() (*big.Float, *big.Float, *big.Float, error) 
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to fetch total supply: %v", err)
 	}
-	log.Print(utilization)
-	log.Print(totalSupply)
 	utilFloat := new(big.Float).SetInt(utilization)
 	utilizationPerc := utilFloat.Quo(utilFloat, utils.ETHMantissa)
 	totalSupplyAdjustedInt := totalSupply.Quo(totalSupply, big.NewInt(1000000)) // Base factor for compv3 decimals
 	totalSupplyAdjusted := new(big.Float).SetInt(totalSupplyAdjustedInt)
-	log.Print(utilizationPerc)
-	log.Print(totalSupplyAdjusted)
 	amountBorrowed := utilizationPerc.Mul(utilizationPerc, totalSupplyAdjusted)
 	availableLiquidity := new(big.Float).Sub(totalSupplyAdjusted, amountBorrowed)
 
@@ -222,6 +261,12 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 		return nil, fmt.Errorf("failed to fetch all prices: %v", err)
 	}
 
+	// Get amounts supplied
+	amountsSupplied, err := c.getTotalsCollateral(config.AssetConfigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get amounts supplied: %v", err)
+	}
+
 	// Fill in LTV and APY for collateral tokens
 	supplyMarkets := make([]*t.MarketInfo, numAssets+1)
 	for i, assetInfo := range config.AssetConfigs {
@@ -236,8 +281,9 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 		// Has LTV, no APY
 		ltv := big.NewFloat(float64(assetInfo.BorrowCollateralFactor))
 		ltv.Quo(ltv, big.NewFloat(10000000000000000))
-		supplyCapInt := new(big.Int).Quo(assetInfo.SupplyCap, decimals)
-		// TODO: Subtract amount supplied from supply cap
+		supplyCapInt := new(big.Int).Sub(assetInfo.SupplyCap, amountsSupplied[i])
+		supplyCapInt.Quo(supplyCapInt, decimals)
+		supplyCap := new(big.Float).SetInt(supplyCapInt)
 		supplyMarkets[i] = &t.MarketInfo{
 			Protocol:   CompoundV3Name,
 			Chain:      c.chain,
@@ -246,7 +292,7 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 			LTV:        ltv,
 			SupplyAPY:  big.NewFloat(0),
 			BorrowAPY:  big.NewFloat(0),
-			SupplyCap:  new(big.Float).SetInt(supplyCapInt),
+			SupplyCap:  supplyCap,
 			BorrowCap:  big.NewFloat(0),
 			PriceInUSD: prices[i],
 		}
@@ -258,7 +304,6 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 		return nil, fmt.Errorf("failed to convert base address to token: %v", err)
 	}
 	supplyAPY, borrowAPY, borrowCap, err := c.getBaseStats()
-	log.Print(symbols[0], " ", borrowCap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get base aprs: %v", err)
 	}
