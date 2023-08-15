@@ -26,6 +26,10 @@ var TokenAliases map[string]string
 var SecPerYear = big.NewFloat(60 * 60 * 24 * 365)
 var ETHMantissa = new(big.Float).SetUint64(1000000000000000000) // 10**18
 var ETHBlocksPerDay = big.NewFloat(7200)
+var BlocksPerDay = map[string]*big.Int{
+	"ethereum": big.NewInt(7200),
+	"arbitrum": big.NewInt(105120000), // Avg block time of 0.3s
+}
 
 func init() {
 	// Parse all config json files

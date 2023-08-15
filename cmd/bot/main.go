@@ -44,7 +44,7 @@ func main() {
 			p.Connect(chain)
 			pms, err := p.GetMarkets()
 			if err != nil {
-				log.Println("failed to get markets: %v", err)
+				log.Printf("failed to get markets: %v", err)
 			}
 			chainPMs = append(chainPMs, pms)
 		}
