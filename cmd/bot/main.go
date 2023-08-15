@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"time"
 	"yield-arb/cmd/arbitrage"
@@ -32,7 +33,7 @@ func main() {
 	// chains := []string{"ethereum", "polygon", "avalanche"}
 	// chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
 	var chainPMs []*t.ProtocolChain
-	ps := []string{"aavev3", "compoundv3"}
+	ps := []string{"aavev3"}
 	// ps := []string{"compoundv3", "aavev3"}
 	for _, protocol := range ps {
 		p, err := p.GetProtocol(protocol)
@@ -66,7 +67,8 @@ func main() {
 		log.Printf("%v: %v", collateral, arbitrage.CalculateNetAPYV2(specs))
 		log.Printf("Cap in USD: $%v", caps[collateral])
 		for _, spec := range specs {
-			log.Print(*spec)
+			prettySpec, _ := json.MarshalIndent(spec, "", "  ")
+			log.Print(string(prettySpec))
 		}
 	}
 

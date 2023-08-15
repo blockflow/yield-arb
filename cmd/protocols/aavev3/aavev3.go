@@ -2,6 +2,7 @@ package aavev3
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -172,22 +173,31 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 	var supplyMarkets []*t.MarketInfo
 	var borrowMarkets []*t.MarketInfo
 	for _, reserveData := range aggReserveData {
+		prettyReserveData, _ := json.MarshalIndent(reserveData, "", "  ")
+		log.Print(string(prettyReserveData))
 		if reserveData.IsPaused {
 			continue
 		}
 
+		decimals := new(big.Int).Exp(big.NewInt(10), reserveData.Decimals, nil)
 		ltv := new(big.Float).SetInt(reserveData.BaseLTVasCollateral)
 		ltv.Quo(ltv, big.NewFloat(100))
 		lendingAPY := utils.ConvertRayToPercentage(reserveData.LiquidityRate)
 		borrowingAPY := utils.ConvertRayToPercentage(reserveData.VariableBorrowRate)
-		supplyCap := new(big.Float).SetInt(reserveData.SupplyCap)
+
+		amountSupplied := new(big.Int).Add(reserveData.TotalScaledVariableDebt, reserveData.AvailableLiquidity)
+		amountSupplied.Quo(amountSupplied, decimals)
+		supplyCap := new(big.Float).SetInt(new(big.Int).Sub(reserveData.SupplyCap, amountSupplied))
 		if supplyCap.Cmp(big.NewFloat(0)) == 0 { // Infinite cap
 			supplyCap = big.NewFloat(math.MaxFloat64)
 		}
-		borrowCap := new(big.Float).SetInt(reserveData.BorrowCap)
+
+		availableLiquidity := new(big.Int).Quo(reserveData.AvailableLiquidity, decimals)
+		borrowCap := new(big.Float).SetInt(availableLiquidity)
 		if borrowCap.Cmp(big.NewFloat(0)) == 0 { // Cap is liquidity
 			borrowCap = new(big.Float).SetInt(reserveData.AvailableLiquidity)
 		}
+
 		priceInUSD := new(big.Float).SetInt(reserveData.PriceInMarketReferenceCurrency)
 		priceInUSD.Quo(priceInUSD, big.NewFloat(100000000))
 		market := &t.MarketInfo{
