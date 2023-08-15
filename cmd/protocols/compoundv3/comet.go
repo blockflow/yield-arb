@@ -29,41 +29,41 @@ var (
 	_ = abi.ConvertType
 )
 
-// CometConfigurationAssetConfig is an auto generated low-level Go binding around an user-defined struct.
-type CometConfigurationAssetConfig struct {
-	Asset                     common.Address
-	PriceFeed                 common.Address
-	Decimals                  uint8
-	BorrowCollateralFactor    uint64
-	LiquidateCollateralFactor uint64
-	LiquidationFactor         uint64
-	SupplyCap                 *big.Int
-}
+// // CometConfigurationAssetConfig is an auto generated low-level Go binding around an user-defined struct.
+// type CometConfigurationAssetConfig struct {
+// 	Asset                     common.Address
+// 	PriceFeed                 common.Address
+// 	Decimals                  uint8
+// 	BorrowCollateralFactor    uint64
+// 	LiquidateCollateralFactor uint64
+// 	LiquidationFactor         uint64
+// 	SupplyCap                 *big.Int
+// }
 
-// CometConfigurationConfiguration is an auto generated low-level Go binding around an user-defined struct.
-type CometConfigurationConfiguration struct {
-	Governor                           common.Address
-	PauseGuardian                      common.Address
-	BaseToken                          common.Address
-	BaseTokenPriceFeed                 common.Address
-	ExtensionDelegate                  common.Address
-	SupplyKink                         uint64
-	SupplyPerYearInterestRateSlopeLow  uint64
-	SupplyPerYearInterestRateSlopeHigh uint64
-	SupplyPerYearInterestRateBase      uint64
-	BorrowKink                         uint64
-	BorrowPerYearInterestRateSlopeLow  uint64
-	BorrowPerYearInterestRateSlopeHigh uint64
-	BorrowPerYearInterestRateBase      uint64
-	StoreFrontPriceFactor              uint64
-	TrackingIndexScale                 uint64
-	BaseTrackingSupplySpeed            uint64
-	BaseTrackingBorrowSpeed            uint64
-	BaseMinForRewards                  *big.Int
-	BaseBorrowMin                      *big.Int
-	TargetReserves                     *big.Int
-	AssetConfigs                       []CometConfigurationAssetConfig
-}
+// // CometConfigurationConfiguration is an auto generated low-level Go binding around an user-defined struct.
+// type CometConfigurationConfiguration struct {
+// 	Governor                           common.Address
+// 	PauseGuardian                      common.Address
+// 	BaseToken                          common.Address
+// 	BaseTokenPriceFeed                 common.Address
+// 	ExtensionDelegate                  common.Address
+// 	SupplyKink                         uint64
+// 	SupplyPerYearInterestRateSlopeLow  uint64
+// 	SupplyPerYearInterestRateSlopeHigh uint64
+// 	SupplyPerYearInterestRateBase      uint64
+// 	BorrowKink                         uint64
+// 	BorrowPerYearInterestRateSlopeLow  uint64
+// 	BorrowPerYearInterestRateSlopeHigh uint64
+// 	BorrowPerYearInterestRateBase      uint64
+// 	StoreFrontPriceFactor              uint64
+// 	TrackingIndexScale                 uint64
+// 	BaseTrackingSupplySpeed            uint64
+// 	BaseTrackingBorrowSpeed            uint64
+// 	BaseMinForRewards                  *big.Int
+// 	BaseBorrowMin                      *big.Int
+// 	TargetReserves                     *big.Int
+// 	AssetConfigs                       []CometConfigurationAssetConfig
+// }
 
 // CometCoreAssetInfo is an auto generated low-level Go binding around an user-defined struct.
 type CometCoreAssetInfo struct {

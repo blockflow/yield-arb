@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"math/big"
 	"time"
 	"yield-arb/cmd/accounts"
@@ -14,7 +15,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"golang.org/x/exp/slices"
 )
 
 // TODO: Account for new features such as isolation mode
@@ -99,6 +99,7 @@ func (a *AaveV3) Connect(chain string) error {
 	}
 
 	// Fetch chainid
+	// TODO: Fetch this in multicall with pool address.
 	chainid, err := cl.ChainID(context.Background())
 	if err != nil {
 		log.Printf("Failed to fetch chainid: %v", err)
@@ -155,97 +156,9 @@ func (a *AaveV3) Connect(chain string) error {
 	return nil
 }
 
-// Returns the symbols of the supported tokens
-func (a *AaveV3) getReservesList() ([]string, error) {
-	addresses, err := a.poolContract.AaveV3PoolCaller.GetReservesList(nil)
-	if err != nil {
-		log.Printf("Failed to fetch reserves list: %v", err)
-		return nil, err
-	}
-
-	// Convert to string
-	addressesString := make([]string, len(addresses))
-	for i, address := range addresses {
-		addressesString[i] = address.Hex()
-	}
-
-	// Convert to symbols
-	symbols, err := utils.ConvertAddressesToSymbols(a.chain, addressesString)
-	if err != nil {
-		log.Printf("Failed to convert addresses to symbols: %v", err)
-		return nil, err
-	}
-
-	return symbols, nil
-}
-
-// GetLendingTokens returns the tokens that can be lent on the given chain
-func (a *AaveV3) GetLendingTokens() ([]string, error) {
-	return a.getReservesList()
-}
-
-// GetBorrowingTokens returns the tokens that can be borrowed on the given chain
-func (a *AaveV3) GetBorrowingTokens() ([]string, error) {
-	return a.getReservesList()
-}
-
-// Get the lending TokenSpecs for the specified tokens. Filters out paused tokens.
-func (a *AaveV3) getTokenSpecs(symbols []string, isLending bool) ([]*t.TokenSpecs, error) {
-	addresses, err := utils.ConvertSymbolsToAddresses(a.chain, symbols)
-	if err != nil {
-		log.Printf("Failed to convert symbols to addresses: %v", err)
-		return nil, err
-	}
-	if len(addresses) == 0 {
-		return []*t.TokenSpecs{}, nil
-	}
-
-	// Fetch reserve data for all tokens
-	aggReserveData, _, err := a.uiPoolDataProviderCaller.GetReservesData(nil, a.addressesProviderAddress)
-	if err != nil {
-		log.Printf("Failed to fetch reserve data: %v", err)
-	}
-
-	// Filter out results for specified symbols
-	var tokenSpecs []*t.TokenSpecs
-	for _, reserveData := range aggReserveData {
-		if reserveData.IsPaused {
-			continue
-		}
-
-		if slices.Contains[string](symbols, reserveData.Symbol) {
-			ltv := new(big.Float).SetInt(reserveData.BaseLTVasCollateral)
-			ltv.Quo(ltv, big.NewFloat(100))
-			var apy *big.Float
-			if isLending {
-				apy = utils.ConvertRayToPercentage(reserveData.LiquidityRate)
-			} else {
-				apy = utils.ConvertRayToPercentage(reserveData.VariableBorrowRate)
-			}
-			tokenSpecs = append(tokenSpecs, &t.TokenSpecs{
-				Protocol: AaveV3Name,
-				Chain:    a.chain,
-				Token:    reserveData.Symbol,
-				LTV:      ltv,
-				APY:      apy,
-			})
-		}
-	}
-	return tokenSpecs, nil
-}
-
-func (a *AaveV3) GetLendingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
-	return a.getTokenSpecs(symbols, true)
-}
-
-func (a *AaveV3) GetBorrowingSpecs(symbols []string) ([]*t.TokenSpecs, error) {
-	return a.getTokenSpecs(symbols, false)
-}
-
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
-// TODO: Check for supply capped markets
-func (a *AaveV3) GetMarkets() (*t.ProtocolMarkets, error) {
+func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 	log.Printf("Fetching market data for %v...", a.chain)
 	startTime := time.Now()
 
@@ -256,41 +169,58 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolMarkets, error) {
 	}
 
 	// Filter out results for specified symbols
-	var lendingSpecs []*t.TokenSpecs
-	var borrowingSpecs []*t.TokenSpecs
+	var supplyMarkets []*t.MarketInfo
+	var borrowMarkets []*t.MarketInfo
 	for _, reserveData := range aggReserveData {
 		if reserveData.IsPaused {
 			continue
 		}
 
+		decimals := new(big.Int).Exp(big.NewInt(10), reserveData.Decimals, nil)
 		ltv := new(big.Float).SetInt(reserveData.BaseLTVasCollateral)
 		ltv.Quo(ltv, big.NewFloat(100))
 		lendingAPY := utils.ConvertRayToPercentage(reserveData.LiquidityRate)
 		borrowingAPY := utils.ConvertRayToPercentage(reserveData.VariableBorrowRate)
-		lendingSpecs = append(lendingSpecs, &t.TokenSpecs{
-			Protocol: AaveV3Name,
-			Chain:    a.chain,
-			Token:    reserveData.Symbol,
-			LTV:      ltv,
-			APY:      lendingAPY,
-		})
-		borrowingSpecs = append(borrowingSpecs, &t.TokenSpecs{
-			Protocol: AaveV3Name,
-			Chain:    a.chain,
-			Token:    reserveData.Symbol,
-			LTV:      ltv,
-			APY:      borrowingAPY,
-		})
+
+		amountSupplied := new(big.Int).Add(reserveData.TotalScaledVariableDebt, reserveData.AvailableLiquidity)
+		amountSupplied.Quo(amountSupplied, decimals)
+		supplyCap := new(big.Float).SetInt(new(big.Int).Sub(reserveData.SupplyCap, amountSupplied))
+		if supplyCap.Cmp(big.NewFloat(0)) == 0 { // Infinite cap
+			supplyCap = big.NewFloat(math.MaxFloat64)
+		}
+
+		availableLiquidity := new(big.Int).Quo(reserveData.AvailableLiquidity, decimals)
+		borrowCap := new(big.Float).SetInt(availableLiquidity)
+		if borrowCap.Cmp(big.NewFloat(0)) == 0 { // Cap is liquidity
+			borrowCap = new(big.Float).SetInt(reserveData.AvailableLiquidity)
+		}
+
+		priceInUSD := new(big.Float).SetInt(reserveData.PriceInMarketReferenceCurrency)
+		priceInUSD.Quo(priceInUSD, big.NewFloat(100000000))
+		market := &t.MarketInfo{
+			Protocol:   AaveV3Name,
+			Chain:      a.chain,
+			Token:      reserveData.Symbol,
+			Decimals:   uint8(reserveData.Decimals.Int64()),
+			LTV:        ltv,
+			SupplyAPY:  lendingAPY,
+			BorrowAPY:  borrowingAPY,
+			SupplyCap:  supplyCap,
+			BorrowCap:  borrowCap,
+			PriceInUSD: priceInUSD,
+		}
+		supplyMarkets = append(supplyMarkets, market)
+		borrowMarkets = append(borrowMarkets, market)
 	}
 
-	log.Printf("Fetched %v lending tokens & %v borrowing tokens", len(lendingSpecs), len(borrowingSpecs))
+	log.Printf("Fetched %v lending tokens & %v borrowing tokens", len(supplyMarkets), len(borrowMarkets))
 	log.Printf("Time elapsed: %v", time.Since(startTime))
 
-	return &t.ProtocolMarkets{
-		Protocol:       AaveV3Name,
-		Chain:          a.chain,
-		LendingSpecs:   lendingSpecs,
-		BorrowingSpecs: borrowingSpecs,
+	return &t.ProtocolChain{
+		Protocol:      AaveV3Name,
+		Chain:         a.chain,
+		SupplyMarkets: supplyMarkets,
+		BorrowMarkets: borrowMarkets,
 	}, nil
 }
 
@@ -304,6 +234,7 @@ func (a *AaveV3) Supply(from common.Address, token string, amount *big.Int) (*ty
 	var tx *types.Transaction
 
 	// If ETH, use WETHGateway
+	// TODO: Update to check for chain native token
 	if token == "ETH" {
 		auth.Value = amount
 		tx, err = a.wethGatewayTransactor.DepositETH(auth, a.poolAddress, from, uint16(0))
@@ -330,6 +261,7 @@ func (a *AaveV3) Borrow(from common.Address, token string, amount *big.Int) (*ty
 	var txErr error
 
 	// If ETH, use WETHGateway
+	// TODO: Update to check for chain native token
 	if token == "ETH" {
 		// TODO: implement approvals/delegates (https://goerli.etherscan.io/tx/0x459babead59985f7ca3a7f8de2cd8dd6479ed1b284872926ead1beb6e73e72da)
 		tx, txErr = a.wethGatewayTransactor.BorrowETH(auth, a.poolAddress, amount, big.NewInt(2), uint16(0))

@@ -2,19 +2,24 @@ package types
 
 import "math/big"
 
-type ProtocolMarkets struct {
-	Protocol       string        `json:"protocol"`
-	Chain          string        `json:"chain"`
-	LendingSpecs   []*TokenSpecs `json:"lendingSpecs"`
-	BorrowingSpecs []*TokenSpecs `json:"borrowingSpecs"`
+type ProtocolChain struct {
+	Protocol      string        `json:"protocol"`
+	Chain         string        `json:"chain"`
+	SupplyMarkets []*MarketInfo `json:"lendingSpecs"`
+	BorrowMarkets []*MarketInfo `json:"borrowingSpecs"`
 }
 
-type TokenSpecs struct {
-	Protocol string     `json:"protocol"`
-	Chain    string     `json:"chain"`
-	Token    string     `json:"token"`
-	LTV      *big.Float `json:"ltv"` // 0 if cannot be collateral
-	APY      *big.Float `json:"apy"`
+type MarketInfo struct {
+	Protocol   string `json:"protocol"`
+	Chain      string `json:"chain"`
+	Token      string `json:"token"`
+	Decimals   uint8
+	LTV        *big.Float `json:"ltv"` // 0 if cannot be collateral
+	SupplyAPY  *big.Float `json:"supplyApy"`
+	BorrowAPY  *big.Float `json:"borrowApy"`
+	SupplyCap  *big.Float // In ether units, availability remaining
+	BorrowCap  *big.Float // In ether units, availability remaining
+	PriceInUSD *big.Float // How much USD is required to purchase 1 ether unit
 }
 
 type AccountData struct {
