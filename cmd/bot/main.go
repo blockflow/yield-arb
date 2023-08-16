@@ -33,18 +33,18 @@ func main() {
 	// chains := []string{"ethereum", "polygon", "avalanche"}
 	// chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
 	var chainPMs []*t.ProtocolChain
-	ps := []string{"aavev3", "compoundv3"}
+	ps := []string{"dforce"}
 	// ps := []string{"compoundv3", "aavev3"}
 	for _, protocol := range ps {
 		p, err := p.GetProtocol(protocol)
 		if err != nil {
-			log.Printf("Failed to get protocol: %v", err)
+			log.Panicf("Failed to get protocol: %v", err)
 		}
 		for _, chain := range chains {
 			p.Connect(chain)
 			pms, err := p.GetMarkets()
 			if err != nil {
-				log.Println("failed to get markets: %v", err)
+				log.Panicf("failed to get markets: %v", err)
 			}
 			chainPMs = append(chainPMs, pms)
 		}
