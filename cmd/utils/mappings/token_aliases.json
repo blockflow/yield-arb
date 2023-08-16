@@ -10,5 +10,20 @@
     "WETH": "ETH",
     "AAVE.e": "AAVE",
     "LINK.e": "LINK",
-    "WMATIC": "MATIC"
+    "WMATIC": "MATIC",
+    "iWBTC": "BTC",
+    "iETH": "ETH",
+    "iUSDC": "USDC",
+    "iUSX": "USX",
+    "iEUX": "EUX",
+    "iUSDT": "USDT",
+    "iUNI": "UNI",
+    "iLINK": "LINK",
+    "iDF": "DF",
+    "iDAI": "DAI",
+    "iFRAX": "FRAX",
+    "iAAVE": "AAVE",
+    "iCRV": "CRV",
+    "iwstETH": "stETH",
+    "iARB": "ARB"
 }

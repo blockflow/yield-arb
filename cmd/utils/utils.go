@@ -26,9 +26,9 @@ var TokenAliases map[string]string
 var SecPerYear = big.NewFloat(60 * 60 * 24 * 365)
 var ETHMantissa = new(big.Float).SetUint64(1000000000000000000) // 10**18
 var ETHBlocksPerDay = big.NewFloat(7200)
-var BlocksPerDay = map[string]*big.Int{
-	"ethereum": big.NewInt(7200),
-	"arbitrum": big.NewInt(105120000), // Avg block time of 0.3s
+var BlocksPerDay = map[string]*big.Float{
+	"ethereum": big.NewFloat(7200),
+	"arbitrum": big.NewFloat(105120000), // Avg block time of 0.3s
 }
 
 func init() {
@@ -168,4 +168,18 @@ func ConvertRayToPercentage(ray *big.Int) *big.Float {
 	// Convert to percentage
 	rayAsFloat.Mul(rayAsFloat, big.NewFloat(100))
 	return rayAsFloat
+}
+
+// Converts a per block rate into APY based on ETH block times.
+func ConvertRatePerBlockToAPY(ratePerBlock *big.Int) *big.Float {
+	ratePerBlockFloat := new(big.Float).SetInt(ratePerBlock)
+	dailyRate := new(big.Float).Quo(ratePerBlockFloat, ETHMantissa)
+	dailyRate.Mul(dailyRate, ETHBlocksPerDay)
+	dailyRate.Add(dailyRate, big.NewFloat(1))
+	dailyRateFloat, _ := dailyRate.Float64()
+	yearlyTotal := math.Pow(dailyRateFloat, 365) // Days per year
+	apy := big.NewFloat(yearlyTotal)
+	apy.Sub(apy, big.NewFloat(1))
+	apy.Mul(apy, big.NewFloat(100))
+	return apy
 }
