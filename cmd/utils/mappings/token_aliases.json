@@ -25,5 +25,18 @@
     "iAAVE": "AAVE",
     "iCRV": "CRV",
     "iwstETH": "stETH",
-    "iARB": "ARB"
+    "iARB": "ARB",
+    "lplvGLP": "GLP",
+    "lUSDC": "USDC",
+    "lETH": "ETH",
+    "lDPX": "DPX",
+    "lFRAX": "FRAX",
+    "lMAGIC": "MAGIC",
+    "lWBTC": "BTC",
+    "lDAI": "DAI",
+    "lARB": "ARB",
+    "lwstETH": "stETH",
+    "lGMX": "GMX",
+    "lUSDT": "USDT",
+    "lUSDC.e": "USDC"
 }

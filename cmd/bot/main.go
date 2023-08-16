@@ -33,8 +33,7 @@ func main() {
 	// chains := []string{"ethereum", "polygon", "avalanche"}
 	// chains := []string{"ethereum_goerli", "avalanche_fuji", "polygon_mumbai"}
 	var chainPMs []*t.ProtocolChain
-	ps := []string{"dforce"}
-	// ps := []string{"compoundv3", "aavev3"}
+	ps := []string{"lodestar"}
 	for _, protocol := range ps {
 		p, err := p.GetProtocol(protocol)
 		if err != nil {
@@ -67,6 +66,7 @@ func main() {
 		log.Printf("%v: %v", collateral, arbitrage.CalculateNetAPYV2(specs))
 		log.Printf("Cap in USD: $%v", caps[collateral])
 		for _, spec := range specs {
+			// log.Print(spec.Protocol, " ", spec.Token, " ", spec.SupplyAPY, " ", spec.BorrowAPY)
 			prettySpec, _ := json.MarshalIndent(spec, "", "  ")
 			log.Print(string(prettySpec))
 		}
