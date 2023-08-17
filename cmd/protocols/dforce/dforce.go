@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 	"time"
+	"yield-arb/cmd/accounts"
 	t "yield-arb/cmd/protocols/types"
 	txs "yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
@@ -40,14 +41,7 @@ var ignoreTokens = []common.Address{
 // Returns the chains supported by the protocol
 func (d *DForce) GetChains() ([]string, error) {
 	return []string{
-		"ethereum",
-		"polygon",
-		"avalanche",
 		"arbitrum",
-		"conflux",
-		"kava",
-		"optimism",
-		"binance",
 	}, nil
 }
 
@@ -102,6 +96,7 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all iTokens: %v", err)
 	}
+	log.Print(allITokens)
 
 	// Aggregate calldata
 	iTokenABI, err := ITokenMetaData.GetAbi()
@@ -250,20 +245,105 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 	}, nil
 }
 
+// Instantiate iToken contract.
+func (d *DForce) InstantiateIToken(token string) (*IToken, error) {
+	if token[0] != 'i' {
+		return nil, fmt.Errorf("token must be an iToken")
+	}
+
+	iTokenAddress, err := utils.ConvertSymbolToAddress(d.chain, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert symbol to address: %v", err)
+	}
+
+	iTokenContract, err := NewIToken(common.HexToAddress(iTokenAddress), d.cl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
+	}
+
+	return iTokenContract, nil
+}
+
 // Lends the token to the protocol
-func (d *DForce) Supply(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	return nil, nil
+func (d *DForce) Supply(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+	iTokenContract, err := d.InstantiateIToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
+	}
+
+	auth, err := accounts.GetAuth(d.cl, d.chainID, wallet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	tx, err := iTokenContract.MintForSelfAndEnterMarket(auth, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mint: %v", err)
+	}
+
+	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
+	return tx, nil
 }
 
-// // Withdraws the token from the protocol
-// Withdraw(user string, token string, amount *big.Int) error
 // Borrows the token from the protocol
-func (d *DForce) Borrow(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	return nil, nil
+func (d *DForce) Borrow(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+	iTokenContract, err := d.InstantiateIToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
+	}
+
+	auth, err := accounts.GetAuth(d.cl, d.chainID, wallet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	tx, err := iTokenContract.Borrow(auth, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to borrow: %v", err)
+	}
+
+	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
+	return tx, nil
 }
 
-// // Repays the token to the protocol
-// Repay(user string, token string, amount *big.Int) error
+// Withdraws the token from the protocol.
+func (d *DForce) Withdraw(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+	iTokenContract, err := d.InstantiateIToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
+	}
 
-// // Fetches the user's positions and leverage
-// GetAccountData(user string)
+	auth, err := accounts.GetAuth(d.cl, d.chainID, wallet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	tx, err := iTokenContract.RedeemUnderlying(auth, wallet, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to withdraw: %v", err)
+	}
+
+	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
+	return tx, nil
+}
+
+// Repays the token to the protocol.
+func (d *DForce) Repay(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+	iTokenContract, err := d.InstantiateIToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
+	}
+
+	auth, err := accounts.GetAuth(d.cl, d.chainID, wallet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	tx, err := iTokenContract.RepayBorrow(auth, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to repay: %v", err)
+	}
+
+	log.Printf("Repaid %v %v to %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
+	return tx, nil
+}

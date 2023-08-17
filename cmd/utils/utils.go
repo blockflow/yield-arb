@@ -101,6 +101,20 @@ func loadAliases() error {
 	return nil
 }
 
+// Converts the token symbol to its respective address for the specified chain.
+func ConvertSymbolToAddress(chain string, symbol string) (string, error) {
+	config, ok := ChainConfigs[chain]
+	if !ok {
+		return "", fmt.Errorf("could not find %v config", chain)
+	}
+
+	address, ok := config.Tokens[symbol]
+	if ok {
+		return address, nil
+	}
+	return "", fmt.Errorf("could not find address for %v", symbol)
+}
+
 // Converts the token symbols to their respective addresses for the specified chain
 // If not mapped, token will be excluded.
 func ConvertSymbolsToAddresses(chain string, symbols []string) ([]string, error) {

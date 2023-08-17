@@ -72,6 +72,13 @@ var wethGatewayAddresses = map[string]string{
 	"ethereum_goerli": "0x2a498323acad2971a8b1936fd7540596dc9bbacd",
 }
 
+var nativeTokens = map[string]string{
+	"ethereum":        "ETH",
+	"ethereum_goerli": "ETH",
+	"arbitrum":        "ETH",
+	"arbitrum_goerli": "AETH",
+}
+
 func (a *AaveV3) GetChains() ([]string, error) {
 	return []string{
 		"ethereum",
@@ -225,8 +232,8 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 }
 
 // Deposits the specified token into the protocol
-func (a *AaveV3) Supply(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	auth, err := accounts.GetAuth(a.cl, a.chainID, from)
+func (a *AaveV3) Supply(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+	auth, err := accounts.GetAuth(a.cl, a.chainID, wallet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
@@ -234,12 +241,11 @@ func (a *AaveV3) Supply(from common.Address, token string, amount *big.Int) (*ty
 	var tx *types.Transaction
 
 	// If ETH, use WETHGateway
-	// TODO: Update to check for chain native token
-	if token == "ETH" {
+	if token == nativeTokens[a.chain] {
 		auth.Value = amount
-		tx, err = a.wethGatewayTransactor.DepositETH(auth, a.poolAddress, from, uint16(0))
+		tx, err = a.wethGatewayTransactor.DepositETH(auth, a.poolAddress, wallet, uint16(0))
 	} else {
-		tx, err = a.poolContract.Supply(auth, a.poolAddress, amount, from, uint16(0))
+		tx, err = a.poolContract.Supply(auth, a.poolAddress, amount, wallet, uint16(0))
 	}
 
 	if err != nil {
@@ -251,8 +257,8 @@ func (a *AaveV3) Supply(from common.Address, token string, amount *big.Int) (*ty
 
 // Borrows the specified token from the protocol.
 // Defaults to variable interest rates.
-func (a *AaveV3) Borrow(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	auth, err := accounts.GetAuth(a.cl, a.chainID, from)
+func (a *AaveV3) Borrow(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+	auth, err := accounts.GetAuth(a.cl, a.chainID, wallet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
@@ -261,21 +267,76 @@ func (a *AaveV3) Borrow(from common.Address, token string, amount *big.Int) (*ty
 	var txErr error
 
 	// If ETH, use WETHGateway
-	// TODO: Update to check for chain native token
-	if token == "ETH" {
+	if token == nativeTokens[a.chain] {
 		// TODO: implement approvals/delegates (https://goerli.etherscan.io/tx/0x459babead59985f7ca3a7f8de2cd8dd6479ed1b284872926ead1beb6e73e72da)
 		tx, txErr = a.wethGatewayTransactor.BorrowETH(auth, a.poolAddress, amount, big.NewInt(2), uint16(0))
 	} else {
-		assets, err := utils.ConvertSymbolsToAddresses(a.chain, []string{token})
+		address, err := utils.ConvertSymbolToAddress(a.chain, token)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert symbol: %v", err)
 		}
-		tx, txErr = a.poolContract.Borrow(auth, common.HexToAddress(assets[0]), amount, big.NewInt(2), uint16(0), from)
+		tx, txErr = a.poolContract.Borrow(auth, common.HexToAddress(address), amount, big.NewInt(2), uint16(0), wallet)
 	}
 
 	if txErr != nil {
 		return nil, fmt.Errorf("failed to send borrow tx: %v", txErr)
 	}
 	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
+	return tx, nil
+}
+
+func (a *AaveV3) Withdraw(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+	auth, err := accounts.GetAuth(a.cl, a.chainID, wallet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	var tx *types.Transaction
+	var txErr error
+
+	// If ETH, use WETHGateway
+	if token == nativeTokens[a.chain] {
+		tx, txErr = a.wethGatewayTransactor.WithdrawETH(auth, a.poolAddress, amount, wallet)
+	} else {
+		address, err := utils.ConvertSymbolToAddress(a.chain, token)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert symbol: %v", err)
+		}
+		tx, txErr = a.poolContract.Withdraw(auth, common.HexToAddress(address), amount, wallet)
+	}
+
+	if txErr != nil {
+		return nil, fmt.Errorf("failed to send withdraw tx: %v", txErr)
+	}
+	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
+	return tx, nil
+}
+
+// Borrows the specified token from the protocol.
+// Defaults to variable interest rates.
+func (a *AaveV3) Repay(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+	auth, err := accounts.GetAuth(a.cl, a.chainID, wallet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	var tx *types.Transaction
+	var txErr error
+
+	// If ETH, use WETHGateway
+	if token == nativeTokens[a.chain] {
+		tx, txErr = a.wethGatewayTransactor.RepayETH(auth, a.poolAddress, amount, big.NewInt(2), wallet)
+	} else {
+		address, err := utils.ConvertSymbolToAddress(a.chain, token)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert symbol: %v", err)
+		}
+		tx, txErr = a.poolContract.Repay(auth, common.HexToAddress(address), amount, big.NewInt(2), wallet)
+	}
+
+	if txErr != nil {
+		return nil, fmt.Errorf("failed to send repay tx: %v", txErr)
+	}
+	log.Printf("Repayed %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
 	return tx, nil
 }
