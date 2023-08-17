@@ -10,7 +10,6 @@ import (
 	"yield-arb/cmd/protocols/lodestar"
 	t "yield-arb/cmd/protocols/types"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -23,13 +22,13 @@ type Protocol interface {
 	GetMarkets() (*t.ProtocolChain, error)
 
 	// Lends the token to the protocol
-	Supply(from common.Address, token string, amount *big.Int) (*types.Transaction, error)
-	// // Withdraws the token from the protocol
-	// Withdraw(user string, token string, amount *big.Int) error
+	Supply(wallet string, token string, amount *big.Int) (*types.Transaction, error)
+	// Withdraws the token from the protocol
+	Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error)
 	// Borrows the token from the protocol
-	Borrow(from common.Address, token string, amount *big.Int) (*types.Transaction, error)
-	// // Repays the token to the protocol
-	// Repay(user string, token string, amount *big.Int) error
+	Borrow(wallet string, token string, amount *big.Int) (*types.Transaction, error)
+	// Repays the token to the protocol
+	Repay(wallet string, token string, amount *big.Int) (*types.Transaction, error)
 
 	// // Fetches the user's positions and leverage
 	// GetAccountData(user string)

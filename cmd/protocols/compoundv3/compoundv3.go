@@ -337,8 +337,9 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 }
 
 // Lends the token to the protocol
-func (c *CompoundV3) Supply(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	auth, err := accounts.GetAuth(c.cl, c.chainID, wallet)
+func (c *CompoundV3) Supply(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(c.cl, c.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
@@ -358,8 +359,9 @@ func (c *CompoundV3) Supply(wallet common.Address, token string, amount *big.Int
 
 // Borrows the token from the protocol.
 // Note: CompoundV3 uses the withdraw function to borrow base asset.
-func (c *CompoundV3) Borrow(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	auth, err := accounts.GetAuth(c.cl, c.chainID, from)
+func (c *CompoundV3) Borrow(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(c.cl, c.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
@@ -378,8 +380,9 @@ func (c *CompoundV3) Borrow(from common.Address, token string, amount *big.Int) 
 }
 
 // Withdraws the token from the protocol.
-func (c *CompoundV3) Withdraw(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	auth, err := accounts.GetAuth(c.cl, c.chainID, wallet)
+func (c *CompoundV3) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(c.cl, c.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
@@ -399,8 +402,9 @@ func (c *CompoundV3) Withdraw(wallet common.Address, token string, amount *big.I
 
 // Repays the token to the protocol.
 // Note: CompoundV3 uses the supply function to repay base asset.
-func (c *CompoundV3) Repay(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	auth, err := accounts.GetAuth(c.cl, c.chainID, wallet)
+func (c *CompoundV3) Repay(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(c.cl, c.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}

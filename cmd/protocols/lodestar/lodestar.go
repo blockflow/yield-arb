@@ -228,13 +228,14 @@ func (l *Lodestar) InstantiateLToken(token string) (*LToken, error) {
 
 // Deposits the specified token into the protocol
 // TODO: Need to call EnterMarkets() to collateralize the supplied asset(s).
-func (l *Lodestar) Supply(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+func (l *Lodestar) Supply(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
 	lTokenContract, err := l.InstantiateLToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
 
-	auth, err := accounts.GetAuth(l.cl, l.chainID, wallet)
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(l.cl, l.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
@@ -250,13 +251,14 @@ func (l *Lodestar) Supply(wallet common.Address, token string, amount *big.Int) 
 
 // Borrows the specified token from the protocol.
 // Defaults to variable interest rates.
-func (l *Lodestar) Borrow(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+func (l *Lodestar) Borrow(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
 	lTokenContract, err := l.InstantiateLToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
 
-	auth, err := accounts.GetAuth(l.cl, l.chainID, wallet)
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(l.cl, l.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
@@ -271,13 +273,14 @@ func (l *Lodestar) Borrow(wallet common.Address, token string, amount *big.Int) 
 }
 
 // Withdraws the specified token from the protocol.
-func (l *Lodestar) Withdraw(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+func (l *Lodestar) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
 	lTokenContract, err := l.InstantiateLToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
 
-	auth, err := accounts.GetAuth(l.cl, l.chainID, wallet)
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(l.cl, l.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
@@ -292,13 +295,14 @@ func (l *Lodestar) Withdraw(wallet common.Address, token string, amount *big.Int
 }
 
 // Repays the specified token to the protocol.
-func (l *Lodestar) Repay(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+func (l *Lodestar) Repay(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
 	lTokenContract, err := l.InstantiateLToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
 
-	auth, err := accounts.GetAuth(l.cl, l.chainID, wallet)
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(l.cl, l.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}

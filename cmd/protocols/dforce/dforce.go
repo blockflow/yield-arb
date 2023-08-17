@@ -265,13 +265,14 @@ func (d *DForce) InstantiateIToken(token string) (*IToken, error) {
 }
 
 // Lends the token to the protocol
-func (d *DForce) Supply(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+func (d *DForce) Supply(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
 	iTokenContract, err := d.InstantiateIToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
 
-	auth, err := accounts.GetAuth(d.cl, d.chainID, wallet)
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(d.cl, d.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
@@ -286,13 +287,14 @@ func (d *DForce) Supply(wallet common.Address, token string, amount *big.Int) (*
 }
 
 // Borrows the token from the protocol
-func (d *DForce) Borrow(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+func (d *DForce) Borrow(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
 	iTokenContract, err := d.InstantiateIToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
 
-	auth, err := accounts.GetAuth(d.cl, d.chainID, wallet)
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(d.cl, d.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
@@ -307,18 +309,19 @@ func (d *DForce) Borrow(wallet common.Address, token string, amount *big.Int) (*
 }
 
 // Withdraws the token from the protocol.
-func (d *DForce) Withdraw(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+func (d *DForce) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
 	iTokenContract, err := d.InstantiateIToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
 
-	auth, err := accounts.GetAuth(d.cl, d.chainID, wallet)
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(d.cl, d.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
 
-	tx, err := iTokenContract.RedeemUnderlying(auth, wallet, amount)
+	tx, err := iTokenContract.RedeemUnderlying(auth, walletAddress, amount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to withdraw: %v", err)
 	}
@@ -328,13 +331,14 @@ func (d *DForce) Withdraw(wallet common.Address, token string, amount *big.Int) 
 }
 
 // Repays the token to the protocol.
-func (d *DForce) Repay(wallet common.Address, token string, amount *big.Int) (*types.Transaction, error) {
+func (d *DForce) Repay(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
 	iTokenContract, err := d.InstantiateIToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
 
-	auth, err := accounts.GetAuth(d.cl, d.chainID, wallet)
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(d.cl, d.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
