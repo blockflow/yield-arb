@@ -197,7 +197,6 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 		if err := oracleABI.UnpackIntoInterface(&underlyingPrice, "getUnderlyingPrice", (*responses)[j+factor-1].ReturnData); err != nil {
 			return nil, fmt.Errorf("failed to unpack getUnderlyingPrice: %v", err)
 		}
-		log.Print(symbol, underlyingPrice)
 
 		// Fill out market info
 		// LTV

@@ -122,6 +122,26 @@ func ConvertSymbolsToAddresses(chain string, symbols []string) ([]string, error)
 	return result, nil
 }
 
+func ConvertAddressToSymbol(chain string, address string) (string, error) {
+	config, ok := ChainConfigs[chain]
+	if !ok {
+		return "", fmt.Errorf("could not find %v config", chain)
+	}
+
+	// Reverse mapping O(tokens)
+	reversedMapping := make(map[string]string)
+	for token, address := range config.Tokens {
+		reversedMapping[address] = token
+	}
+
+	// Convert address to symbols O(addresses)
+	symbol, ok := reversedMapping[address]
+	if ok {
+		return symbol, nil
+	}
+	return "", fmt.Errorf("could not find symbol for %v", address)
+}
+
 // Converts the token addresses to their respective symbols for the specified chain
 // If not mapped, token will be excluded.
 // TODO: cache reverse mapping

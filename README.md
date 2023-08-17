@@ -35,3 +35,5 @@ For Windows:
 `go mode tidy` to remove unused dependencies
 
 Uses Multicall to reduce RPC calls. (https://github.com/mds1/multicall)
+
+If need to retrieve non-view function output, just set the stateMutability in the json to view.
