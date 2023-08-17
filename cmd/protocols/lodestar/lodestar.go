@@ -2,7 +2,6 @@ package lodestar
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -172,8 +171,6 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 	supplyMarkets := make([]*t.MarketInfo, numAssets)
 	borrowMarkets := make([]*t.MarketInfo, numAssets)
 	for i, metadata := range metadataAll {
-		prettySpec, _ := json.MarshalIndent(metadata, "", "  ")
-		log.Print(string(prettySpec))
 		decimals := uint8(metadata.UnderlyingDecimals.Uint64())
 		ltv := new(big.Float).Quo(new(big.Float).SetInt(metadata.CollateralFactorMantissa), utils.ETHMantissa)
 		ltv.Mul(ltv, big.NewFloat(100))
