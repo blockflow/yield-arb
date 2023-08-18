@@ -37,3 +37,7 @@ For Windows:
 Uses Multicall to reduce RPC calls. (https://github.com/mds1/multicall)
 
 If need to retrieve non-view function output, just set the stateMutability in the json to view.
+
+Useful GETH repo: https://github.com/everFinance/goether/tree/main
+
+EIP712 TypedData uses lower cases for type names.

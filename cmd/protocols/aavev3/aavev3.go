@@ -262,17 +262,35 @@ func (a *AaveV3) Supply(wallet string, token string, amount *big.Int) (*types.Tr
 	}
 
 	var tx *types.Transaction
+	var txErr error
 
 	// If ETH, use WETHGateway
 	if token == nativeTokens[a.chain] {
 		auth.Value = amount
-		tx, err = a.wethGatewayTransactor.DepositETH(auth, a.poolAddress, walletAddress, uint16(0))
+		tx, txErr = a.wethGatewayTransactor.DepositETH(auth, a.poolAddress, walletAddress, uint16(0))
+	} else if token == "WETH" {
+		// Does not support EIP2612 Permit. Make sure to approve beforehand.
+		address, err := utils.ConvertSymbolToAddress(a.chain, token)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert symbol: %v", err)
+		}
+		tx, txErr = a.poolContract.Supply(auth, common.HexToAddress(address), amount, walletAddress, uint16(0))
 	} else {
-		tx, err = a.poolContract.Supply(auth, a.poolAddress, amount, walletAddress, uint16(0))
+		address, err := utils.ConvertSymbolToAddress(a.chain, token)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert symbol: %v", err)
+		}
+		// Sign EIP 2612 permit to use SupplyPermit
+		signedPermit, err := accounts.SignEIP2612Permit(a.cl, a.chainID, a.chain, token, walletAddress, a.poolAddress, amount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign permit: %v", err)
+		}
+
+		tx, txErr = a.poolContract.SupplyWithPermit(auth, common.HexToAddress(address), amount, walletAddress, uint16(0), signedPermit.Deadline, signedPermit.V, [32]byte(signedPermit.R), [32]byte(signedPermit.S))
 	}
 
-	if err != nil {
-		return nil, fmt.Errorf("failed to send supply tx: %v", err)
+	if txErr != nil {
+		return nil, fmt.Errorf("failed to send supply tx: %v", txErr)
 	}
 	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
 	return tx, nil
