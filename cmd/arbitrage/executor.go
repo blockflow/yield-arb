@@ -50,6 +50,7 @@ func EnterStrategy(wallet string, ps map[string]*p.Protocol, strategy []*t.Marke
 }
 
 // Exit the strategy and liquidate all positions.
+// Repays slightly more than debt to account for interest.
 func ExitStrategy(wallet string, ps map[string]*p.Protocol, strategy []*t.MarketInfo) error {
 	// Starting with the end, withdraw all collateral and repay all debt
 

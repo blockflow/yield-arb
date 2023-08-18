@@ -286,28 +286,6 @@ func (d *DForce) Supply(wallet string, token string, amount *big.Int) (*types.Tr
 	return tx, nil
 }
 
-// Borrows the token from the protocol
-func (d *DForce) Borrow(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	iTokenContract, err := d.InstantiateIToken(token)
-	if err != nil {
-		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
-	}
-
-	walletAddress := common.HexToAddress(wallet)
-	auth, err := accounts.GetAuth(d.cl, d.chainID, walletAddress)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
-	}
-
-	tx, err := iTokenContract.Borrow(auth, amount)
-	if err != nil {
-		return nil, fmt.Errorf("failed to borrow: %v", err)
-	}
-
-	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
-	return tx, nil
-}
-
 // Withdraws the token from the protocol.
 func (d *DForce) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
 	iTokenContract, err := d.InstantiateIToken(token)
@@ -327,6 +305,45 @@ func (d *DForce) Withdraw(wallet string, token string, amount *big.Int) (*types.
 	}
 
 	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
+	return tx, nil
+}
+
+// Withdraws all of the token from the protocol.
+func (d *DForce) WithdrawAll(wallet string, token string) (*types.Transaction, error) {
+	iTokenContract, err := d.InstantiateIToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
+	}
+	walletAddress := common.HexToAddress(wallet)
+
+	// Get iToken balance
+	amount, err := iTokenContract.BalanceOf(nil, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get balance: %v", err)
+	}
+
+	return d.Withdraw(wallet, token, amount)
+}
+
+// Borrows the token from the protocol
+func (d *DForce) Borrow(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	iTokenContract, err := d.InstantiateIToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
+	}
+
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(d.cl, d.chainID, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	tx, err := iTokenContract.Borrow(auth, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to borrow: %v", err)
+	}
+
+	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
 	return tx, nil
 }
 
@@ -350,4 +367,21 @@ func (d *DForce) Repay(wallet string, token string, amount *big.Int) (*types.Tra
 
 	log.Printf("Repaid %v %v to %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
 	return tx, nil
+}
+
+// Repays all of the token to the protocol.
+func (d *DForce) RepayAll(wallet string, token string) (*types.Transaction, error) {
+	iTokenContract, err := d.InstantiateIToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
+	}
+	walletAddress := common.HexToAddress(wallet)
+
+	// Get borrow balance
+	amount, err := iTokenContract.BorrowBalanceStored(nil, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get borrow balance: %v", err)
+	}
+
+	return d.Repay(wallet, token, amount)
 }

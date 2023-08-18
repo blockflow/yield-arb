@@ -357,6 +357,32 @@ func (c *CompoundV3) Supply(wallet string, token string, amount *big.Int) (*type
 	return tx, nil
 }
 
+// Withdraws the token from the protocol.
+func (c *CompoundV3) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(c.cl, c.chainID, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	address, err := utils.ConvertSymbolToAddress(c.chain, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert symbol to address: %v", err)
+	}
+	tx, err := c.cometContract.Withdraw(auth, common.HexToAddress(address), amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to withdraw: %v", err)
+	}
+
+	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, CompoundV3Name, c.chain, tx.Hash())
+	return tx, nil
+}
+
+func (c *CompoundV3) WithdrawAll(wallet string, token string) (*types.Transaction, error) {
+	maxUint := new(big.Int).SetUint64(math.MaxUint64)
+	return c.Withdraw(wallet, token, maxUint)
+}
+
 // Borrows the token from the protocol.
 // Note: CompoundV3 uses the withdraw function to borrow base asset.
 func (c *CompoundV3) Borrow(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
@@ -376,27 +402,6 @@ func (c *CompoundV3) Borrow(wallet string, token string, amount *big.Int) (*type
 	}
 
 	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, CompoundV3Name, c.chain, tx.Hash())
-	return tx, nil
-}
-
-// Withdraws the token from the protocol.
-func (c *CompoundV3) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	walletAddress := common.HexToAddress(wallet)
-	auth, err := accounts.GetAuth(c.cl, c.chainID, walletAddress)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
-	}
-
-	address, err := utils.ConvertSymbolToAddress(c.chain, token)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert symbol to address: %v", err)
-	}
-	tx, err := c.cometContract.Withdraw(auth, common.HexToAddress(address), amount)
-	if err != nil {
-		return nil, fmt.Errorf("failed to withdraw: %v", err)
-	}
-
-	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, CompoundV3Name, c.chain, tx.Hash())
 	return tx, nil
 }
 
@@ -420,4 +425,9 @@ func (c *CompoundV3) Repay(wallet string, token string, amount *big.Int) (*types
 
 	log.Printf("Repaid %v %v to %v on %v (%v)", amount, token, CompoundV3Name, c.chain, tx.Hash())
 	return tx, nil
+}
+
+func (c *CompoundV3) RepayAll(wallet string, token string) (*types.Transaction, error) {
+	maxUint := new(big.Int).SetUint64(math.MaxUint64)
+	return c.Repay(wallet, token, maxUint)
 }

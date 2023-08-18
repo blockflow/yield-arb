@@ -231,6 +231,28 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 	}, nil
 }
 
+// // Returns the token balances for the specified wallet.
+// func (a *AaveV3) GetBalances(wallet string) (map[string]*big.Int, error) {
+// 	provider := common.HexToAddress(aavev3AddressesProviders[a.chain])
+// 	walletAddress := common.HexToAddress(wallet)
+// 	balances := make(map[string]*big.Int)
+
+// 	// Second result is the user emode category id
+// 	userReserves, _, err := a.uiPoolDataProviderCaller.GetUserReservesData(nil, provider, walletAddress)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to fetch user reserves: %v", err)
+// 	}
+
+// 	for _, userReserve := range userReserves {
+// 		asset := userReserve.UnderlyingAsset
+// 		symbol, err := utils.ConvertAddressToSymbol(a.chain, asset.Hex())
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to convert address to symbol: %v", err)
+// 		}
+// 		// balances[symbol] = userReserve.
+// 	}
+// }
+
 // Deposits the specified token into the protocol
 func (a *AaveV3) Supply(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
 	walletAddress := common.HexToAddress(wallet)
@@ -254,6 +276,39 @@ func (a *AaveV3) Supply(wallet string, token string, amount *big.Int) (*types.Tr
 	}
 	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
 	return tx, nil
+}
+
+func (a *AaveV3) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(a.cl, a.chainID, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	var tx *types.Transaction
+	var txErr error
+
+	// If ETH, use WETHGateway
+	if token == nativeTokens[a.chain] {
+		tx, txErr = a.wethGatewayTransactor.WithdrawETH(auth, a.poolAddress, amount, walletAddress)
+	} else {
+		address, err := utils.ConvertSymbolToAddress(a.chain, token)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert symbol: %v", err)
+		}
+		tx, txErr = a.poolContract.Withdraw(auth, common.HexToAddress(address), amount, walletAddress)
+	}
+
+	if txErr != nil {
+		return nil, fmt.Errorf("failed to send withdraw tx: %v", txErr)
+	}
+	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
+	return tx, nil
+}
+
+func (a *AaveV3) WithdrawAll(wallet string, token string) (*types.Transaction, error) {
+	maxUint := new(big.Int).SetUint64(math.MaxUint64)
+	return a.Withdraw(wallet, token, maxUint)
 }
 
 // Borrows the specified token from the protocol.
@@ -287,34 +342,6 @@ func (a *AaveV3) Borrow(wallet string, token string, amount *big.Int) (*types.Tr
 	return tx, nil
 }
 
-func (a *AaveV3) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	walletAddress := common.HexToAddress(wallet)
-	auth, err := accounts.GetAuth(a.cl, a.chainID, walletAddress)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
-	}
-
-	var tx *types.Transaction
-	var txErr error
-
-	// If ETH, use WETHGateway
-	if token == nativeTokens[a.chain] {
-		tx, txErr = a.wethGatewayTransactor.WithdrawETH(auth, a.poolAddress, amount, walletAddress)
-	} else {
-		address, err := utils.ConvertSymbolToAddress(a.chain, token)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert symbol: %v", err)
-		}
-		tx, txErr = a.poolContract.Withdraw(auth, common.HexToAddress(address), amount, walletAddress)
-	}
-
-	if txErr != nil {
-		return nil, fmt.Errorf("failed to send withdraw tx: %v", txErr)
-	}
-	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
-	return tx, nil
-}
-
 // Borrows the specified token from the protocol.
 // Defaults to variable interest rates.
 func (a *AaveV3) Repay(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
@@ -343,4 +370,9 @@ func (a *AaveV3) Repay(wallet string, token string, amount *big.Int) (*types.Tra
 	}
 	log.Printf("Repayed %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
 	return tx, nil
+}
+
+func (a *AaveV3) RepayAll(wallet string, token string) (*types.Transaction, error) {
+	maxUint := new(big.Int).SetUint64(math.MaxUint64)
+	return a.Repay(wallet, token, maxUint)
 }
