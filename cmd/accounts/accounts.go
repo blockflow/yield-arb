@@ -71,6 +71,12 @@ func SignEIP2612Permit(cl *ethclient.Client, chainID *big.Int, chain, token stri
 		return nil, fmt.Errorf("failed to get nonce: %v", err)
 	}
 
+	// Get name
+	name, err := erc20PermitContract.Name(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get name: %v", err)
+	}
+
 	// Set deadline to 1 day from now
 	block, err := cl.BlockByNumber(context.Background(), nil)
 	if err != nil {
@@ -80,7 +86,7 @@ func SignEIP2612Permit(cl *ethclient.Client, chainID *big.Int, chain, token stri
 	deadline := big.NewInt(0).Add(timestamp, big.NewInt(86400))
 
 	domain := apitypes.TypedDataDomain{
-		Name:              token,
+		Name:              name,
 		Version:           "1",
 		ChainId:           math.NewHexOrDecimal256(chainID.Int64()),
 		VerifyingContract: tokenAddress,

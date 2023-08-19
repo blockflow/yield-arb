@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"math/big"
 	"time"
 	p "yield-arb/cmd/protocols"
 )
@@ -11,9 +10,9 @@ func main() {
 	log.Println("Starting bot...")
 	startTime := time.Now()
 
-	// chains := []string{"arbitrum"}
-	// var chainPMs []*t.ProtocolChain
-	// ps := []string{"aavev3", "compoundv3", "dforce", "lodestar"}
+	// chains := []string{"ethereum_goerli"}
+	// var chainPMs []*types.ProtocolChain
+	// ps := []string{"compoundv3"}
 	// for _, protocol := range ps {
 	// 	p, err := p.GetProtocol(protocol)
 	// 	if err != nil {
@@ -43,20 +42,36 @@ func main() {
 	// }
 
 	// Test Deposit()
-	p, _ := p.GetProtocol("aavev3")
-	p.Connect("ethereum_goerli")
-	_, err := p.Supply("0x18dC22D776aEFefD2538079409176086fcB6C741", "WETH", big.NewInt(100000000000000))
-	if err != nil {
-		log.Printf("failed to supply: %v", err)
-	}
+	// p, _ := p.GetProtocol("compoundv3")
+	// p.Connect("ethereum_goerli")
+	// _, err := p.Supply("0x18dC22D776aEFefD2538079409176086fcB6C741", "WBTC", big.NewInt(10000))
+	// if err != nil {
+	// 	log.Printf("failed to supply: %v", err)
+	// }
 
 	// Test Borrow
-	// p, _ := p.GetProtocol("aavev3")
+	// p, _ := p.GetProtocol("compoundv3")
 	// p.Connect("ethereum_goerli")
-	// _, err := p.Borrow(common.HexToAddress("0x18dC22D776aEFefD2538079409176086fcB6C741"), "USDC", big.NewInt(31))
+	// _, err := p.Borrow("0x18dC22D776aEFefD2538079409176086fcB6C741", "USDC", big.NewInt(100000))
 	// if err != nil {
 	// 	log.Printf("failed to borrow: %v", err)
 	// }
+
+	// Test Repay
+	// p, _ := p.GetProtocol("compoundv3")
+	// p.Connect("ethereum_goerli")
+	// _, err := p.RepayAll("0x18dC22D776aEFefD2538079409176086fcB6C741", "USDC")
+	// if err != nil {
+	// 	log.Printf("failed to repay: %v", err)
+	// }
+
+	// Test Withdraw
+	p, _ := p.GetProtocol("compoundv3")
+	p.Connect("ethereum_goerli")
+	_, err := p.WithdrawAll("0x18dC22D776aEFefD2538079409176086fcB6C741", "WBTC")
+	if err != nil {
+		log.Printf("failed to withdraw: %v", err)
+	}
 
 	log.Printf("Total time elapsed: %v", time.Since(startTime))
 }

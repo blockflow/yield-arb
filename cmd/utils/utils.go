@@ -24,6 +24,7 @@ var TokenAliases map[string]string
 
 // Constants
 var MaxUint64 = new(big.Int).SetUint64(^uint64(0))
+var MaxUint256, _ = new(big.Int).SetString("115792089237316195423570985008687907853269984665640564039457584007913129639935", 10)
 var SecPerYear = big.NewFloat(60 * 60 * 24 * 365)
 var ETHMantissa = new(big.Float).SetUint64(1000000000000000000) // 10**18
 var ETHBlocksPerDay = big.NewFloat(7200)
