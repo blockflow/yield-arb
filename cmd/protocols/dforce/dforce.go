@@ -9,6 +9,7 @@ import (
 	"time"
 	"yield-arb/cmd/accounts"
 	t "yield-arb/cmd/protocols/types"
+	"yield-arb/cmd/transactions"
 	txs "yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
 
@@ -246,27 +247,28 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 }
 
 // Instantiate iToken contract.
-func (d *DForce) InstantiateIToken(token string) (*IToken, error) {
+func (d *DForce) InstantiateIToken(token string) (*IToken, common.Address, error) {
 	if token[0] != 'i' {
-		return nil, fmt.Errorf("token must be an iToken")
+		return nil, common.Address{}, fmt.Errorf("token must be an iToken")
 	}
 
-	iTokenAddress, err := utils.ConvertSymbolToAddress(d.chain, token)
+	itoken, err := utils.ConvertSymbolToAddress(d.chain, token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert symbol to address: %v", err)
+		return nil, common.Address{}, fmt.Errorf("failed to convert symbol to address: %v", err)
 	}
+	iTokenAddress := common.HexToAddress(itoken)
 
-	iTokenContract, err := NewIToken(common.HexToAddress(iTokenAddress), d.cl)
+	iTokenContract, err := NewIToken(iTokenAddress, d.cl)
 	if err != nil {
-		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
+		return nil, common.Address{}, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
 
-	return iTokenContract, nil
+	return iTokenContract, iTokenAddress, nil
 }
 
 // Lends the token to the protocol
 func (d *DForce) Supply(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	iTokenContract, err := d.InstantiateIToken(token)
+	iTokenContract, iTokenAddress, err := d.InstantiateIToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
@@ -275,6 +277,16 @@ func (d *DForce) Supply(wallet string, token string, amount *big.Int) (*types.Tr
 	auth, err := accounts.GetAuth(d.cl, d.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	tokenAddress, err := iTokenContract.Underlying(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying token address: %v", err)
+	}
+	// Handle approvals
+	_, err = transactions.ApproveERC20IfNeeded(d.cl, auth, tokenAddress, walletAddress, iTokenAddress, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to approve: %v", err)
 	}
 
 	tx, err := iTokenContract.MintForSelfAndEnterMarket(auth, amount)
@@ -288,7 +300,7 @@ func (d *DForce) Supply(wallet string, token string, amount *big.Int) (*types.Tr
 
 // Withdraws the token from the protocol.
 func (d *DForce) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	iTokenContract, err := d.InstantiateIToken(token)
+	iTokenContract, iTokenAddress, err := d.InstantiateIToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
@@ -297,6 +309,11 @@ func (d *DForce) Withdraw(wallet string, token string, amount *big.Int) (*types.
 	auth, err := accounts.GetAuth(d.cl, d.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+	// Handle approvals
+	_, err = transactions.ApproveERC20IfNeeded(d.cl, auth, iTokenAddress, walletAddress, iTokenAddress, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to approve: %v", err)
 	}
 
 	tx, err := iTokenContract.RedeemUnderlying(auth, walletAddress, amount)
@@ -310,7 +327,7 @@ func (d *DForce) Withdraw(wallet string, token string, amount *big.Int) (*types.
 
 // Withdraws all of the token from the protocol.
 func (d *DForce) WithdrawAll(wallet string, token string) (*types.Transaction, error) {
-	iTokenContract, err := d.InstantiateIToken(token)
+	iTokenContract, iTokenAddress, err := d.InstantiateIToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
@@ -322,12 +339,29 @@ func (d *DForce) WithdrawAll(wallet string, token string) (*types.Transaction, e
 		return nil, fmt.Errorf("failed to get balance: %v", err)
 	}
 
-	return d.Withdraw(wallet, token, amount)
+	auth, err := accounts.GetAuth(d.cl, d.chainID, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	// Handle approvals
+	_, err = transactions.ApproveERC20IfNeeded(d.cl, auth, iTokenAddress, walletAddress, iTokenAddress, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to approve: %v", err)
+	}
+
+	tx, err := iTokenContract.Redeem(auth, walletAddress, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to withdraw: %v", err)
+	}
+
+	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
+	return tx, nil
 }
 
 // Borrows the token from the protocol
 func (d *DForce) Borrow(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	iTokenContract, err := d.InstantiateIToken(token)
+	iTokenContract, _, err := d.InstantiateIToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
@@ -349,7 +383,7 @@ func (d *DForce) Borrow(wallet string, token string, amount *big.Int) (*types.Tr
 
 // Repays the token to the protocol.
 func (d *DForce) Repay(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	iTokenContract, err := d.InstantiateIToken(token)
+	iTokenContract, iTokenAddress, err := d.InstantiateIToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
@@ -358,6 +392,16 @@ func (d *DForce) Repay(wallet string, token string, amount *big.Int) (*types.Tra
 	auth, err := accounts.GetAuth(d.cl, d.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	tokenAddress, err := iTokenContract.Underlying(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying token address: %v", err)
+	}
+	// Handle approvals
+	_, err = transactions.ApproveERC20IfNeeded(d.cl, auth, tokenAddress, walletAddress, iTokenAddress, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to approve: %v", err)
 	}
 
 	tx, err := iTokenContract.RepayBorrow(auth, amount)
@@ -371,7 +415,7 @@ func (d *DForce) Repay(wallet string, token string, amount *big.Int) (*types.Tra
 
 // Repays all of the token to the protocol.
 func (d *DForce) RepayAll(wallet string, token string) (*types.Transaction, error) {
-	iTokenContract, err := d.InstantiateIToken(token)
+	iTokenContract, _, err := d.InstantiateIToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
