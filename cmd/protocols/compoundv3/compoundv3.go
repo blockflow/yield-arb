@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 	"time"
+	"yield-arb/cmd/accounts"
 	t "yield-arb/cmd/protocols/types"
 	txs "yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
@@ -29,7 +30,8 @@ type CompoundV3 struct {
 const CompoundV3Name = "CompoundV3"
 
 var compv3ConfigAddresses = map[string]string{
-	"arbitrum": "0xb21b06D71c75973babdE35b49fFDAc3F82Ad3775",
+	"arbitrum":        "0xb21b06D71c75973babdE35b49fFDAc3F82Ad3775",
+	"arbitrum_goerli": "0x1Ead344570F0f0a0cD86d95d8adDC7855C8723Fb",
 }
 
 var compv3CometAddresses = map[string]string{
@@ -335,12 +337,97 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 }
 
 // Lends the token to the protocol
-func (c *CompoundV3) Supply(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	return nil, nil
+func (c *CompoundV3) Supply(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(c.cl, c.chainID, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	address, err := utils.ConvertSymbolToAddress(c.chain, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert symbol to address: %v", err)
+	}
+	tx, err := c.cometContract.Supply(auth, common.HexToAddress(address), amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to supply: %v", err)
+	}
+
+	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, CompoundV3Name, c.chain, tx.Hash())
+	return tx, nil
 }
 
-func (c *CompoundV3) Borrow(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	return nil, nil
+// Withdraws the token from the protocol.
+func (c *CompoundV3) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(c.cl, c.chainID, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	address, err := utils.ConvertSymbolToAddress(c.chain, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert symbol to address: %v", err)
+	}
+	tx, err := c.cometContract.Withdraw(auth, common.HexToAddress(address), amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to withdraw: %v", err)
+	}
+
+	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, CompoundV3Name, c.chain, tx.Hash())
+	return tx, nil
 }
 
-// TODO: Handle ETH transactions differently!!!
+func (c *CompoundV3) WithdrawAll(wallet string, token string) (*types.Transaction, error) {
+	maxUint := new(big.Int).SetUint64(math.MaxUint64)
+	return c.Withdraw(wallet, token, maxUint)
+}
+
+// Borrows the token from the protocol.
+// Note: CompoundV3 uses the withdraw function to borrow base asset.
+func (c *CompoundV3) Borrow(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(c.cl, c.chainID, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	address, err := utils.ConvertSymbolToAddress(c.chain, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert symbol to address: %v", err)
+	}
+	tx, err := c.cometContract.Withdraw(auth, common.HexToAddress(address), amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to borrow: %v", err)
+	}
+
+	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, CompoundV3Name, c.chain, tx.Hash())
+	return tx, nil
+}
+
+// Repays the token to the protocol.
+// Note: CompoundV3 uses the supply function to repay base asset.
+func (c *CompoundV3) Repay(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(c.cl, c.chainID, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	address, err := utils.ConvertSymbolToAddress(c.chain, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert symbol to address: %v", err)
+	}
+	tx, err := c.cometContract.Supply(auth, common.HexToAddress(address), amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to repay: %v", err)
+	}
+
+	log.Printf("Repaid %v %v to %v on %v (%v)", amount, token, CompoundV3Name, c.chain, tx.Hash())
+	return tx, nil
+}
+
+func (c *CompoundV3) RepayAll(wallet string, token string) (*types.Transaction, error) {
+	maxUint := new(big.Int).SetUint64(math.MaxUint64)
+	return c.Repay(wallet, token, maxUint)
+}

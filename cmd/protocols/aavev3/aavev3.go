@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"time"
 	"yield-arb/cmd/accounts"
+	"yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
 
 	t "yield-arb/cmd/protocols/types"
@@ -70,6 +71,13 @@ var uiPoolDataProviders = map[string]string{
 var wethGatewayAddresses = map[string]string{
 	// Testnets
 	"ethereum_goerli": "0x2a498323acad2971a8b1936fd7540596dc9bbacd",
+}
+
+var nativeTokens = map[string]string{
+	"ethereum":        "ETH",
+	"ethereum_goerli": "ETH",
+	"arbitrum":        "ETH",
+	"arbitrum_goerli": "AETH",
 }
 
 func (a *AaveV3) GetChains() ([]string, error) {
@@ -224,58 +232,171 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 	}, nil
 }
 
+// // Returns the token balances for the specified wallet.
+// func (a *AaveV3) GetBalances(wallet string) (map[string]*big.Int, error) {
+// 	provider := common.HexToAddress(aavev3AddressesProviders[a.chain])
+// 	walletAddress := common.HexToAddress(wallet)
+// 	balances := make(map[string]*big.Int)
+
+// 	// Second result is the user emode category id
+// 	userReserves, _, err := a.uiPoolDataProviderCaller.GetUserReservesData(nil, provider, walletAddress)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to fetch user reserves: %v", err)
+// 	}
+
+// 	for _, userReserve := range userReserves {
+// 		asset := userReserve.UnderlyingAsset
+// 		symbol, err := utils.ConvertAddressToSymbol(a.chain, asset.Hex())
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to convert address to symbol: %v", err)
+// 		}
+// 		// balances[symbol] = userReserve.
+// 	}
+// }
+
 // Deposits the specified token into the protocol
-func (a *AaveV3) Supply(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	auth, err := accounts.GetAuth(a.cl, a.chainID, from)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
-	}
-
-	var tx *types.Transaction
-
-	// If ETH, use WETHGateway
-	// TODO: Update to check for chain native token
-	if token == "ETH" {
-		auth.Value = amount
-		tx, err = a.wethGatewayTransactor.DepositETH(auth, a.poolAddress, from, uint16(0))
-	} else {
-		tx, err = a.poolContract.Supply(auth, a.poolAddress, amount, from, uint16(0))
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to send supply tx: %v", err)
-	}
-	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
-	return tx, nil
-}
-
-// Borrows the specified token from the protocol.
-// Defaults to variable interest rates.
-func (a *AaveV3) Borrow(from common.Address, token string, amount *big.Int) (*types.Transaction, error) {
-	auth, err := accounts.GetAuth(a.cl, a.chainID, from)
+func (a *AaveV3) Supply(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(a.cl, a.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
 
 	var tx *types.Transaction
 	var txErr error
-
-	// If ETH, use WETHGateway
-	// TODO: Update to check for chain native token
-	if token == "ETH" {
-		// TODO: implement approvals/delegates (https://goerli.etherscan.io/tx/0x459babead59985f7ca3a7f8de2cd8dd6479ed1b284872926ead1beb6e73e72da)
-		tx, txErr = a.wethGatewayTransactor.BorrowETH(auth, a.poolAddress, amount, big.NewInt(2), uint16(0))
-	} else {
-		assets, err := utils.ConvertSymbolsToAddresses(a.chain, []string{token})
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert symbol: %v", err)
-		}
-		tx, txErr = a.poolContract.Borrow(auth, common.HexToAddress(assets[0]), amount, big.NewInt(2), uint16(0), from)
+	address, err := utils.ConvertSymbolToAddress(a.chain, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert symbol: %v", err)
 	}
+	tokenAddress := common.HexToAddress(address)
+
+	if token == "WETH" {
+		// Does not support EIP2612 Permit. Make sure to approve beforehand.
+		_, err := transactions.ApproveERC20IfNeeded(a.cl, auth, tokenAddress, walletAddress, a.poolAddress, amount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to approve: %v", err)
+		}
+
+		tx, txErr = a.poolContract.Supply(auth, tokenAddress, amount, walletAddress, uint16(0))
+	} else {
+		// Sign EIP 2612 permit to use SupplyPermit
+		signedPermit, err := accounts.SignEIP2612Permit(a.cl, a.chainID, a.chain, token, walletAddress, a.poolAddress, amount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign permit: %v", err)
+		}
+
+		tx, txErr = a.poolContract.SupplyWithPermit(auth, tokenAddress, amount, walletAddress, uint16(0), signedPermit.Deadline, signedPermit.V, [32]byte(signedPermit.R), [32]byte(signedPermit.S))
+	}
+
+	if txErr != nil {
+		return nil, fmt.Errorf("failed to send supply tx: %v", txErr)
+	}
+	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
+	return tx, nil
+}
+
+func (a *AaveV3) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(a.cl, a.chainID, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	address, err := utils.ConvertSymbolToAddress(a.chain, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert symbol: %v", err)
+	}
+	tokenAddress := common.HexToAddress(address)
+
+	// Fetch atoken address
+	reserveData, err := a.poolContract.GetReserveData(nil, tokenAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch reserve data: %v", err)
+	}
+	// Handle approvals
+	_, err = transactions.ApproveERC20IfNeeded(a.cl, auth, reserveData.ATokenAddress, walletAddress, a.poolAddress, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to approve: %v", err)
+	}
+
+	tx, txErr := a.poolContract.Withdraw(auth, tokenAddress, amount, walletAddress)
+
+	if txErr != nil {
+		return nil, fmt.Errorf("failed to send withdraw tx: %v", txErr)
+	}
+	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
+	return tx, nil
+}
+
+func (a *AaveV3) WithdrawAll(wallet string, token string) (*types.Transaction, error) {
+	maxUint := new(big.Int).SetUint64(math.MaxUint64)
+	return a.Withdraw(wallet, token, maxUint)
+}
+
+// Borrows the specified token from the protocol.
+// Defaults to variable interest rates.
+func (a *AaveV3) Borrow(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(a.cl, a.chainID, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	address, err := utils.ConvertSymbolToAddress(a.chain, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert symbol: %v", err)
+	}
+	tx, txErr := a.poolContract.Borrow(auth, common.HexToAddress(address), amount, big.NewInt(2), uint16(0), walletAddress)
 
 	if txErr != nil {
 		return nil, fmt.Errorf("failed to send borrow tx: %v", txErr)
 	}
 	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
 	return tx, nil
+}
+
+// Borrows the specified token from the protocol.
+// Defaults to variable interest rates.
+func (a *AaveV3) Repay(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+	auth, err := accounts.GetAuth(a.cl, a.chainID, walletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	var tx *types.Transaction
+	var txErr error
+	address, err := utils.ConvertSymbolToAddress(a.chain, token)
+	tokenAddress := common.HexToAddress(address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert symbol: %v", err)
+	}
+
+	if token == "WETH" {
+		// Handle approvals
+		_, err := transactions.ApproveERC20IfNeeded(a.cl, auth, tokenAddress, walletAddress, a.poolAddress, amount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to approve: %v", err)
+		}
+		tx, txErr = a.poolContract.Repay(auth, tokenAddress, amount, big.NewInt(2), walletAddress)
+	} else {
+		// Sign EIP 2612 permit to use SupplyPermit
+		signedPermit, err := accounts.SignEIP2612Permit(a.cl, a.chainID, a.chain, token, walletAddress, a.poolAddress, amount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign permit: %v", err)
+		}
+
+		tx, txErr = a.poolContract.RepayWithPermit(auth, tokenAddress, amount, big.NewInt(2), walletAddress, signedPermit.Deadline, signedPermit.V, [32]byte(signedPermit.R), [32]byte(signedPermit.S))
+	}
+
+	if txErr != nil {
+		return nil, fmt.Errorf("failed to send repay tx: %v", txErr)
+	}
+	log.Printf("Repayed %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
+	return tx, nil
+}
+
+func (a *AaveV3) RepayAll(wallet string, token string) (*types.Transaction, error) {
+	maxUint := new(big.Int).SetUint64(math.MaxUint64)
+	return a.Repay(wallet, token, maxUint)
 }

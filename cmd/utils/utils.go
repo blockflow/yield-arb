@@ -23,6 +23,7 @@ var ChainConfigs = make(map[string]*ChainConfig)
 var TokenAliases map[string]string
 
 // Constants
+var MaxUint64 = new(big.Int).SetUint64(^uint64(0))
 var SecPerYear = big.NewFloat(60 * 60 * 24 * 365)
 var ETHMantissa = new(big.Float).SetUint64(1000000000000000000) // 10**18
 var ETHBlocksPerDay = big.NewFloat(7200)
@@ -99,6 +100,20 @@ func loadAliases() error {
 
 	TokenAliases = parsedMapping
 	return nil
+}
+
+// Converts the token symbol to its respective address for the specified chain.
+func ConvertSymbolToAddress(chain string, symbol string) (string, error) {
+	config, ok := ChainConfigs[chain]
+	if !ok {
+		return "", fmt.Errorf("could not find %v config", chain)
+	}
+
+	address, ok := config.Tokens[symbol]
+	if ok {
+		return address, nil
+	}
+	return "", fmt.Errorf("could not find address for %v", symbol)
 }
 
 // Converts the token symbols to their respective addresses for the specified chain

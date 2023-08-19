@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"time"
+	"yield-arb/cmd/utils"
 
 	ethereum "github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -74,4 +77,58 @@ func HandleMulticall(e *ethclient.Client, calls *[]Multicall3Call3) (*[]Multical
 	}
 
 	return responses, nil
+}
+
+// Waits until the tx has the specified number of confirmations.
+func WaitForConfirmations(cl *ethclient.Client, tx *types.Transaction, confirms uint64) (*types.Receipt, error) {
+	// Wait for tx to be mined
+	receipt, err := bind.WaitMined(context.Background(), cl, tx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+	txBlockNumber := receipt.BlockNumber.Uint64()
+
+	// Wait for confirmations
+	latestBlock := uint64(0)
+	for latestBlock < txBlockNumber+confirms {
+		// Sleep for 1 sec
+		time.Sleep(time.Second)
+		latestBlock, err = cl.BlockNumber(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get latest block number: %v", err)
+		}
+	}
+
+	return receipt, nil
+}
+
+// Checks to see if the approval is >= amount and approves max if not.
+// Will wait for the approval tx if it is sent.
+// If approval not needed, will return nil for tx.
+func ApproveERC20IfNeeded(cl *ethclient.Client, auth *bind.TransactOpts, token, owner, spender common.Address, amount *big.Int) (*types.Transaction, error) {
+	tokenContract, err := NewERC20Permit(token, cl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get token contract: %v", err)
+	}
+
+	// Get allowance
+	allowance, err := tokenContract.Allowance(nil, owner, spender)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get allowance: %v", err)
+	}
+
+	// Approve if needed
+	if allowance.Cmp(amount) == -1 {
+		tx, err := tokenContract.Approve(auth, spender, utils.MaxUint64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to approve: %v", err)
+		}
+		_, err = WaitForConfirmations(cl, tx, 1)
+		if err != nil {
+			return nil, fmt.Errorf("failed to wait for confirmations: %v", err)
+		}
+		log.Printf("Approved %v %v for %v", utils.MaxUint64, token, spender)
+		return tx, nil
+	}
+	return nil, nil
 }
