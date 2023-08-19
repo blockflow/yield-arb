@@ -1,6 +1,24 @@
 # yield-arb
 
-Lending and borrowing are separated by design to allow for deposit only protocols (ex. AMM).
+Lending and borrowing are separated by design to allow for deposit only protocols (ex. staking).
+
+## Packages
+
+### protocols
+
+Contains all the blockchain protocol specific logic. Each should conform to the same interface as specified in the main file.
+
+### arbitrage
+
+Contains all the strategy logic. Finds profitable opportunities and sends the transactions necessary to execute them.
+
+### utils
+
+Contains all the helper functions and constants. Should not perform any actions.
+
+### accounts
+
+Contains all the logic relating to wallet management. Provides signers and other wallet interactions required for sending transactions.
 
 ## Add a new protocol
 
