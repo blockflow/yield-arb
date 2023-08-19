@@ -42,7 +42,7 @@ func main() {
 	// }
 
 	// Test Deposit()
-	// p, _ := p.GetProtocol("compoundv3")
+	// p, _ := p.GetProtocol("aavev3")
 	// p.Connect("ethereum_goerli")
 	// _, err := p.Supply("0x18dC22D776aEFefD2538079409176086fcB6C741", "WBTC", big.NewInt(10000))
 	// if err != nil {
@@ -66,7 +66,7 @@ func main() {
 	// }
 
 	// Test Withdraw
-	p, _ := p.GetProtocol("compoundv3")
+	p, _ := p.GetProtocol("aavev3")
 	p.Connect("ethereum_goerli")
 	_, err := p.WithdrawAll("0x18dC22D776aEFefD2538079409176086fcB6C741", "WBTC")
 	if err != nil {
