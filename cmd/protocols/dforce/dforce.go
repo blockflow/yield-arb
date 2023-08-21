@@ -34,6 +34,9 @@ var controllerAddresses = map[string]string{
 	"arbitrum": "0x8E7e9eA9023B81457Ae7E6D2a51b003D421E5408",
 }
 
+// TODO: Change to mapping to support other chains
+var nativeToken = "iETH"
+
 var ignoreTokens = []common.Address{
 	common.HexToAddress("0xe8c85B60Cb3bA32369c699015621813fb2fEA56c"), // TODO: iMUSX, no supply rate?
 	common.HexToAddress("0x5BE49B2e04aC55A17c72aC37E3a85D9602322021"), // TODO: iMEUX, no supply rate?
@@ -97,7 +100,6 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all iTokens: %v", err)
 	}
-	log.Print(allITokens)
 
 	// Aggregate calldata
 	iTokenABI, err := ITokenMetaData.GetAbi()
@@ -279,19 +281,56 @@ func (d *DForce) Supply(wallet string, token string, amount *big.Int) (*types.Tr
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
 
-	tokenAddress, err := iTokenContract.Underlying(nil)
+	// Check if entered market
+	enteredMarket, err := d.controllerContract.HasEnteredMarket(nil, walletAddress, iTokenAddress)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get underlying token address: %v", err)
+		return nil, fmt.Errorf("failed to get entered markets: %v", err)
 	}
-	// Handle approvals
-	_, err = transactions.ApproveERC20IfNeeded(d.cl, auth, tokenAddress, walletAddress, iTokenAddress, amount)
-	if err != nil {
-		return nil, fmt.Errorf("failed to approve: %v", err)
+	if !enteredMarket {
+		// Enter market
+		log.Printf("Entering %v market on %v", token, DForceName)
+		tx, err := d.controllerContract.EnterMarkets(auth, []common.Address{iTokenAddress})
+		if err != nil {
+			return nil, fmt.Errorf("failed to enter market: %v", err)
+		}
+		// Wait for tx to be mined
+		_, err = txs.WaitForConfirmations(d.cl, tx, 0)
+		if err != nil {
+			return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+		}
+		log.Printf("Entered %v market on %v (%v)", token, DForceName, tx.Hash())
 	}
 
-	tx, err := iTokenContract.MintForSelfAndEnterMarket(auth, amount)
-	if err != nil {
-		return nil, fmt.Errorf("failed to mint: %v", err)
+	var tx *types.Transaction
+	if token == nativeToken {
+		// Send native token
+		// Manually added iETH mint() function to abi before generating bindings
+		auth.Value = amount
+		tx, err = iTokenContract.Mint0(auth, walletAddress)
+		if err != nil {
+			return nil, fmt.Errorf("failed to mint: %v", err)
+		}
+	} else {
+		tokenAddress, err := iTokenContract.Underlying(nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get underlying token address: %v", err)
+		}
+		// Handle approvals
+		_, err = transactions.ApproveERC20IfNeeded(d.cl, auth, tokenAddress, walletAddress, iTokenAddress, amount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to approve: %v", err)
+		}
+		// Get decimals
+		decimals, err := iTokenContract.Decimals(nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get decimals: %v", err)
+		}
+		// Dforce uses a whole token as the base unit
+		amountETH := new(big.Int).Div(amount, big.NewInt(int64(math.Pow(10, float64(decimals)))))
+		tx, err = iTokenContract.Mint(auth, walletAddress, amountETH)
+		if err != nil {
+			return nil, fmt.Errorf("failed to mint: %v", err)
+		}
 	}
 
 	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
@@ -404,7 +443,15 @@ func (d *DForce) Repay(wallet string, token string, amount *big.Int) (*types.Tra
 		return nil, fmt.Errorf("failed to approve: %v", err)
 	}
 
-	tx, err := iTokenContract.RepayBorrow(auth, amount)
+	// Get decimals
+	decimals, err := iTokenContract.Decimals(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get decimals: %v", err)
+	}
+	// Dforce uses a whole token as the base unit
+	amountETH := new(big.Int).Div(amount, big.NewInt(int64(math.Pow(10, float64(decimals)))))
+
+	tx, err := iTokenContract.RepayBorrow(auth, amountETH)
 	if err != nil {
 		return nil, fmt.Errorf("failed to repay: %v", err)
 	}

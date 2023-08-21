@@ -10,9 +10,9 @@ func main() {
 	log.Println("Starting bot...")
 	startTime := time.Now()
 
-	// chains := []string{"ethereum_goerli"}
+	// chains := []string{"arbitrum"}
 	// var chainPMs []*types.ProtocolChain
-	// ps := []string{"compoundv3"}
+	// ps := []string{"dforce"}
 	// for _, protocol := range ps {
 	// 	p, err := p.GetProtocol(protocol)
 	// 	if err != nil {
@@ -41,34 +41,38 @@ func main() {
 	// 	}
 	// }
 
+	const protocol = "dforce"
+	const chain = "arbitrum"
+	const wallet = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+
 	// Test Deposit()
-	// p, _ := p.GetProtocol("aavev3")
-	// p.Connect("ethereum_goerli")
-	// _, err := p.Supply("0x18dC22D776aEFefD2538079409176086fcB6C741", "WBTC", big.NewInt(10000))
+	// p, _ := p.GetProtocol(protocol)
+	// p.Connect(chain)
+	// _, err := p.Supply(wallet, "iDAI", big.NewInt(1000000))
 	// if err != nil {
 	// 	log.Printf("failed to supply: %v", err)
 	// }
 
 	// Test Borrow
-	// p, _ := p.GetProtocol("compoundv3")
-	// p.Connect("ethereum_goerli")
-	// _, err := p.Borrow("0x18dC22D776aEFefD2538079409176086fcB6C741", "USDC", big.NewInt(100000))
+	// p, _ := p.GetProtocol(protocol)
+	// p.Connect(chain)
+	// _, err := p.Borrow(wallet, "iUSDC", big.NewInt(1000000))
 	// if err != nil {
 	// 	log.Printf("failed to borrow: %v", err)
 	// }
 
 	// Test Repay
-	// p, _ := p.GetProtocol("compoundv3")
-	// p.Connect("ethereum_goerli")
-	// _, err := p.RepayAll("0x18dC22D776aEFefD2538079409176086fcB6C741", "USDC")
+	// p, _ := p.GetProtocol(protocol)
+	// p.Connect(chain)
+	// _, err := p.RepayAll(wallet, "iUSDC")
 	// if err != nil {
 	// 	log.Printf("failed to repay: %v", err)
 	// }
 
 	// Test Withdraw
-	p, _ := p.GetProtocol("aavev3")
-	p.Connect("ethereum_goerli")
-	_, err := p.WithdrawAll("0x18dC22D776aEFefD2538079409176086fcB6C741", "WBTC")
+	p, _ := p.GetProtocol(protocol)
+	p.Connect(chain)
+	_, err := p.WithdrawAll(wallet, "iDAI")
 	if err != nil {
 		log.Printf("failed to withdraw: %v", err)
 	}

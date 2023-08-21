@@ -111,6 +111,9 @@ func ApproveERC20IfNeeded(cl *ethclient.Client, auth *bind.TransactOpts, token, 
 		return nil, fmt.Errorf("failed to get token contract: %v", err)
 	}
 
+	balance, err := tokenContract.BalanceOf(nil, owner)
+	log.Print(token, balance)
+
 	// Get allowance
 	allowance, err := tokenContract.Allowance(nil, owner, spender)
 	if err != nil {
@@ -118,14 +121,14 @@ func ApproveERC20IfNeeded(cl *ethclient.Client, auth *bind.TransactOpts, token, 
 	}
 
 	// Approve if needed, less than halfmax and less than amount
-	halfMax := big.NewInt(0).Div(utils.MaxUint256, big.NewInt(2))
+	halfMax := new(big.Int).Div(utils.MaxUint256, big.NewInt(2))
 	if allowance.Cmp(halfMax) == -1 && allowance.Cmp(amount) == -1 {
 		tx, err := tokenContract.Approve(auth, spender, utils.MaxUint64)
 		if err != nil {
 			return nil, fmt.Errorf("failed to approve: %v", err)
 		}
 		log.Printf("Approving %v %v for %v", utils.MaxUint64, token, spender)
-		_, err = WaitForConfirmations(cl, tx, 1)
+		_, err = WaitForConfirmations(cl, tx, 0)
 		if err != nil {
 			return nil, fmt.Errorf("failed to wait for confirmations: %v", err)
 		}
