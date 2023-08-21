@@ -2,6 +2,14 @@
 
 Lending and borrowing are separated by design to allow for deposit only protocols (ex. staking).
 
+## Ideas
+
+ - Create web-hosted front-end (Near BOS, react)
+ - Show historical data (The Graph, airstack)
+ - Integrate a wallet dApp (walletconnect, metamask)
+ - Manual, user signs tx to execute strat
+ - Bundle txs/signs using ERC4337 (biconomy)
+
 ## Packages
 
 ### protocols
