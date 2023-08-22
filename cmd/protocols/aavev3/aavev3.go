@@ -291,6 +291,13 @@ func (a *AaveV3) Supply(wallet string, token string, amount *big.Int) (*types.Tr
 	if txErr != nil {
 		return nil, fmt.Errorf("failed to send supply tx: %v", txErr)
 	}
+
+	// Wait
+	_, err = transactions.WaitForConfirmations(a.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+
 	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
 	return tx, nil
 }
@@ -324,6 +331,13 @@ func (a *AaveV3) Withdraw(wallet string, token string, amount *big.Int) (*types.
 	if txErr != nil {
 		return nil, fmt.Errorf("failed to send withdraw tx: %v", txErr)
 	}
+
+	// Wait
+	_, err = transactions.WaitForConfirmations(a.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+
 	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
 	return tx, nil
 }
@@ -350,6 +364,13 @@ func (a *AaveV3) Borrow(wallet string, token string, amount *big.Int) (*types.Tr
 	if txErr != nil {
 		return nil, fmt.Errorf("failed to send borrow tx: %v", txErr)
 	}
+
+	// Wait
+	_, err = transactions.WaitForConfirmations(a.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+
 	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
 	return tx, nil
 }
@@ -391,6 +412,13 @@ func (a *AaveV3) Repay(wallet string, token string, amount *big.Int) (*types.Tra
 	if txErr != nil {
 		return nil, fmt.Errorf("failed to send repay tx: %v", txErr)
 	}
+
+	// Wait
+	_, err = transactions.WaitForConfirmations(a.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+
 	log.Printf("Repaid %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
 	return tx, nil
 }

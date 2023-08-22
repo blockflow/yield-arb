@@ -269,6 +269,12 @@ func (l *Lodestar) Supply(wallet string, token string, amount *big.Int) (*types.
 		return nil, fmt.Errorf("failed to mint: %v", err)
 	}
 
+	// Wait
+	_, err = transactions.WaitForConfirmations(l.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+
 	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, LodestarName, l.chain, tx.Hash())
 	return tx, nil
 }
@@ -295,6 +301,12 @@ func (l *Lodestar) Withdraw(wallet string, token string, amount *big.Int) (*type
 	tx, err := lTokenContract.Redeem(auth, amount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to redeem: %v", err)
+	}
+
+	// Wait
+	_, err = transactions.WaitForConfirmations(l.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
 	}
 
 	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, LodestarName, l.chain, tx.Hash())
@@ -337,6 +349,12 @@ func (l *Lodestar) Borrow(wallet string, token string, amount *big.Int) (*types.
 		return nil, fmt.Errorf("failed to borrow: %v", err)
 	}
 
+	// Wait
+	_, err = transactions.WaitForConfirmations(l.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+
 	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, LodestarName, l.chain, tx.Hash())
 	return tx, nil
 }
@@ -367,6 +385,12 @@ func (l *Lodestar) Repay(wallet string, token string, amount *big.Int) (*types.T
 	tx, err := lTokenContract.RepayBorrow(auth, amount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to repay: %v", err)
+	}
+
+	// Wait
+	_, err = transactions.WaitForConfirmations(l.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
 	}
 
 	log.Printf("Repaid %v %v to %v on %v (%v)", amount, token, LodestarName, l.chain, tx.Hash())

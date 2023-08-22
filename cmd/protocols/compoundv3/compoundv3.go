@@ -359,6 +359,12 @@ func (c *CompoundV3) Supply(wallet string, token string, amount *big.Int) (*type
 		return nil, fmt.Errorf("failed to supply: %v", err)
 	}
 
+	// Wait
+	_, err = transactions.WaitForConfirmations(c.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+
 	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, CompoundV3Name, c.chain, tx.Hash())
 	return tx, nil
 }
@@ -378,6 +384,12 @@ func (c *CompoundV3) Withdraw(wallet string, token string, amount *big.Int) (*ty
 	tx, err := c.cometContract.Withdraw(auth, common.HexToAddress(address), amount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to withdraw: %v", err)
+	}
+
+	// Wait
+	_, err = transactions.WaitForConfirmations(c.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
 	}
 
 	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, CompoundV3Name, c.chain, tx.Hash())
