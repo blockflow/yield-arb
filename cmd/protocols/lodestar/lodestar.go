@@ -241,6 +241,19 @@ func (l *Lodestar) Supply(wallet string, token string, amount *big.Int) (*types.
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
 	}
 
+	// Check if entered market
+	enteredMarket, err := l.comptrollerContract.CheckMembership(nil, walletAddress, lTokenAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %v", err)
+	}
+	if !enteredMarket {
+		tx, err := l.comptrollerContract.EnterMarkets(auth, []common.Address{lTokenAddress})
+		if err != nil {
+			return nil, fmt.Errorf("failed to enter markets: %v", err)
+		}
+		log.Printf("Entered %v market on %v (%v)", token, LodestarName, tx.Hash())
+	}
+
 	tokenAddress, err := lTokenContract.Underlying(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get underlying token address: %v", err)

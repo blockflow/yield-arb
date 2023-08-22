@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"time"
+	"yield-arb/cmd/protocols"
 )
 
 func main() {
@@ -40,14 +41,14 @@ func main() {
 	// 	}
 	// }
 
-	const protocol = "dforce"
+	const protocol = "lodestar"
 	const chain = "arbitrum"
 	const wallet = "0x18dC22D776aEFefD2538079409176086fcB6C741"
 
 	// Test Deposit()
 	// p, _ := protocols.GetProtocol(protocol)
 	// p.Connect(chain)
-	// _, err := p.Supply(wallet, "iUSDC", big.NewInt(1000000))
+	// _, err := p.Supply(wallet, "lUSDC.e", big.NewInt(1000000))
 	// if err != nil {
 	// 	log.Printf("failed to supply: %v", err)
 	// }
@@ -55,7 +56,7 @@ func main() {
 	// Test Borrow
 	// p, _ := protocols.GetProtocol(protocol)
 	// p.Connect(chain)
-	// _, err := p.Borrow(wallet, "iwstETH", big.NewInt(1))
+	// _, err := p.Borrow(wallet, "lwstETH", big.NewInt(1))
 	// if err != nil {
 	// 	log.Printf("failed to borrow: %v", err)
 	// }
@@ -63,18 +64,18 @@ func main() {
 	// Test Repay
 	// p, _ := protocols.GetProtocol(protocol)
 	// p.Connect(chain)
-	// _, err := p.RepayAll(wallet, "iwstETH")
+	// _, err := p.RepayAll(wallet, "lwstETH")
 	// if err != nil {
 	// 	log.Printf("failed to repay: %v", err)
 	// }
 
 	// Test Withdraw
-	// p, _ := protocols.GetProtocol(protocol)
-	// p.Connect(chain)
-	// _, err := p.WithdrawAll(wallet, "iUSDC")
-	// if err != nil {
-	// 	log.Printf("failed to withdraw: %v", err)
-	// }
+	p, _ := protocols.GetProtocol(protocol)
+	p.Connect(chain)
+	_, err := p.WithdrawAll(wallet, "lUSDC.e")
+	if err != nil {
+		log.Printf("failed to withdraw: %v", err)
+	}
 
 	log.Printf("Total time elapsed: %v", time.Since(startTime))
 }
