@@ -8,10 +8,10 @@ import (
 	"math/big"
 	"time"
 	"yield-arb/cmd/accounts"
+	"yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
 
 	t "yield-arb/cmd/protocols/types"
-	txs "yield-arb/cmd/transactions"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -139,7 +139,7 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 
 	// Fetch all supply caps
 	// Aggregate calldata
-	calls := make([]txs.Multicall3Call3, numAssets)
+	calls := make([]transactions.Multicall3Call3, numAssets)
 	comptrollerABI, err := ComptrollerMetaData.GetAbi()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get comptroller abi: %v", err)
@@ -149,13 +149,13 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to pack supply caps: %v", err)
 		}
-		calls[i] = txs.Multicall3Call3{
+		calls[i] = transactions.Multicall3Call3{
 			Target:   l.comptrollerAddress,
 			CallData: data,
 		}
 	}
 	// Perform multicall
-	responses, err := txs.HandleMulticall(l.cl, &calls)
+	responses, err := transactions.HandleMulticall(l.cl, &calls)
 	if err != nil {
 		return nil, fmt.Errorf("failed to multicall: %v", err)
 	}
@@ -208,28 +208,29 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 }
 
 // Instantiate lToken contract.
-func (l *Lodestar) InstantiateLToken(token string) (*LToken, error) {
+func (l *Lodestar) InstantiateLToken(token string) (*LToken, common.Address, error) {
 	if token[0] != 'l' {
-		return nil, fmt.Errorf("token must be an lToken")
+		return nil, common.Address{}, fmt.Errorf("token must be an lToken")
 	}
 
-	iTokenAddress, err := utils.ConvertSymbolToAddress(l.chain, token)
+	ltoken, err := utils.ConvertSymbolToAddress(l.chain, token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert symbol to address: %v", err)
+		return nil, common.Address{}, fmt.Errorf("failed to convert symbol to address: %v", err)
 	}
+	lTokenAddress := common.HexToAddress(ltoken)
 
-	iTokenContract, err := NewLToken(common.HexToAddress(iTokenAddress), l.cl)
+	iTokenContract, err := NewLToken(lTokenAddress, l.cl)
 	if err != nil {
-		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
+		return nil, common.Address{}, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
 
-	return iTokenContract, nil
+	return iTokenContract, lTokenAddress, nil
 }
 
 // Deposits the specified token into the protocol
 // TODO: Need to call EnterMarkets() to collateralize the supplied asset(s).
 func (l *Lodestar) Supply(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	lTokenContract, err := l.InstantiateLToken(token)
+	lTokenContract, lTokenAddress, err := l.InstantiateLToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
@@ -238,6 +239,29 @@ func (l *Lodestar) Supply(wallet string, token string, amount *big.Int) (*types.
 	auth, err := accounts.GetAuth(l.cl, l.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	// Check if entered market
+	enteredMarket, err := l.comptrollerContract.CheckMembership(nil, walletAddress, lTokenAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %v", err)
+	}
+	if !enteredMarket {
+		tx, err := l.comptrollerContract.EnterMarkets(auth, []common.Address{lTokenAddress})
+		if err != nil {
+			return nil, fmt.Errorf("failed to enter markets: %v", err)
+		}
+		log.Printf("Entered %v market on %v (%v)", token, LodestarName, tx.Hash())
+	}
+
+	tokenAddress, err := lTokenContract.Underlying(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying token address: %v", err)
+	}
+	// Handle approvals
+	_, err = transactions.ApproveERC20IfNeeded(l.cl, auth, tokenAddress, walletAddress, lTokenAddress, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to approve: %v", err)
 	}
 
 	tx, err := lTokenContract.Mint(auth, amount)
@@ -250,8 +274,9 @@ func (l *Lodestar) Supply(wallet string, token string, amount *big.Int) (*types.
 }
 
 // Withdraws the specified token from the protocol.
+// Withdraws in units of ltoken, not underlying.
 func (l *Lodestar) Withdraw(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	lTokenContract, err := l.InstantiateLToken(token)
+	lTokenContract, lTokenAddress, err := l.InstantiateLToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
@@ -260,6 +285,11 @@ func (l *Lodestar) Withdraw(wallet string, token string, amount *big.Int) (*type
 	auth, err := accounts.GetAuth(l.cl, l.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+	// Handle approvals
+	_, err = transactions.ApproveERC20IfNeeded(l.cl, auth, lTokenAddress, walletAddress, lTokenAddress, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to approve: %v", err)
 	}
 
 	tx, err := lTokenContract.Redeem(auth, amount)
@@ -273,7 +303,7 @@ func (l *Lodestar) Withdraw(wallet string, token string, amount *big.Int) (*type
 
 // Withdraws all of the specified token from the protocol.
 func (l *Lodestar) WithdrawAll(wallet string, token string) (*types.Transaction, error) {
-	lTokenContract, err := l.InstantiateLToken(token)
+	lTokenContract, _, err := l.InstantiateLToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
@@ -291,7 +321,7 @@ func (l *Lodestar) WithdrawAll(wallet string, token string) (*types.Transaction,
 // Borrows the specified token from the protocol.
 // Defaults to variable interest rates.
 func (l *Lodestar) Borrow(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	lTokenContract, err := l.InstantiateLToken(token)
+	lTokenContract, _, err := l.InstantiateLToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
@@ -313,7 +343,7 @@ func (l *Lodestar) Borrow(wallet string, token string, amount *big.Int) (*types.
 
 // Repays the specified token to the protocol.
 func (l *Lodestar) Repay(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	lTokenContract, err := l.InstantiateLToken(token)
+	lTokenContract, lTokenAddress, err := l.InstantiateLToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}
@@ -322,6 +352,16 @@ func (l *Lodestar) Repay(wallet string, token string, amount *big.Int) (*types.T
 	auth, err := accounts.GetAuth(l.cl, l.chainID, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+	}
+
+	tokenAddress, err := lTokenContract.Underlying(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying token address: %v", err)
+	}
+	// Handle approvals
+	_, err = transactions.ApproveERC20IfNeeded(l.cl, auth, tokenAddress, walletAddress, lTokenAddress, amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to approve: %v", err)
 	}
 
 	tx, err := lTokenContract.RepayBorrow(auth, amount)
@@ -335,7 +375,7 @@ func (l *Lodestar) Repay(wallet string, token string, amount *big.Int) (*types.T
 
 // Repays all of the specified token to the protocol.
 func (l *Lodestar) RepayAll(wallet string, token string) (*types.Transaction, error) {
-	lTokenContract, err := l.InstantiateLToken(token)
+	lTokenContract, _, err := l.InstantiateLToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
 	}

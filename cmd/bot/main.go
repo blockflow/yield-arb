@@ -2,9 +2,8 @@ package main
 
 import (
 	"log"
-	"math/big"
 	"time"
-	p "yield-arb/cmd/protocols"
+	"yield-arb/cmd/protocols"
 )
 
 func main() {
@@ -12,8 +11,8 @@ func main() {
 	startTime := time.Now()
 
 	// chains := []string{"arbitrum"}
-	// var chainPMs []*t.ProtocolChain
-	// ps := []string{"aavev3", "compoundv3", "dforce", "lodestar"}
+	// var chainPMs []*types.ProtocolChain
+	// ps := []string{"dforce"}
 	// for _, protocol := range ps {
 	// 	p, err := p.GetProtocol(protocol)
 	// 	if err != nil {
@@ -42,21 +41,41 @@ func main() {
 	// 	}
 	// }
 
+	const protocol = "lodestar"
+	const chain = "arbitrum"
+	const wallet = "0x18dC22D776aEFefD2538079409176086fcB6C741"
+
 	// Test Deposit()
-	p, _ := p.GetProtocol("aavev3")
-	p.Connect("ethereum_goerli")
-	_, err := p.Supply("0x18dC22D776aEFefD2538079409176086fcB6C741", "WETH", big.NewInt(100000000000000))
-	if err != nil {
-		log.Printf("failed to supply: %v", err)
-	}
+	// p, _ := protocols.GetProtocol(protocol)
+	// p.Connect(chain)
+	// _, err := p.Supply(wallet, "lUSDC.e", big.NewInt(1000000))
+	// if err != nil {
+	// 	log.Printf("failed to supply: %v", err)
+	// }
 
 	// Test Borrow
-	// p, _ := p.GetProtocol("aavev3")
-	// p.Connect("ethereum_goerli")
-	// _, err := p.Borrow(common.HexToAddress("0x18dC22D776aEFefD2538079409176086fcB6C741"), "USDC", big.NewInt(31))
+	// p, _ := protocols.GetProtocol(protocol)
+	// p.Connect(chain)
+	// _, err := p.Borrow(wallet, "lwstETH", big.NewInt(1))
 	// if err != nil {
 	// 	log.Printf("failed to borrow: %v", err)
 	// }
+
+	// Test Repay
+	// p, _ := protocols.GetProtocol(protocol)
+	// p.Connect(chain)
+	// _, err := p.RepayAll(wallet, "lwstETH")
+	// if err != nil {
+	// 	log.Printf("failed to repay: %v", err)
+	// }
+
+	// Test Withdraw
+	p, _ := protocols.GetProtocol(protocol)
+	p.Connect(chain)
+	_, err := p.WithdrawAll(wallet, "lUSDC.e")
+	if err != nil {
+		log.Printf("failed to withdraw: %v", err)
+	}
 
 	log.Printf("Total time elapsed: %v", time.Since(startTime))
 }

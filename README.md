@@ -45,6 +45,13 @@ Contains all the logic relating to wallet management. Provides signers and other
 2. If needed, build abigen tool (https://geth.ethereum.org/docs/tools/abigen) and place in `protocols/`
 3. Generate bindings into `protocols/bindings/` with `./abigen --abi cmd/protocols/PROTOCOL/CONTRACT.json --pkg PROTOCOL --type CONTRACT --out cmd/protocols/PROTOCOL/CONTRACT.go`
 
+## Testing
+
+1. Run a fork with `anvil -f <URL>`
+2. Wrap ETH into WETH on arbiscan (point MetaMask to local fork)
+3. Change RPC URL for chain temporarily in config
+4. Happy testing!
+
 ## Notes
 
 Modules -> Packages -> Files

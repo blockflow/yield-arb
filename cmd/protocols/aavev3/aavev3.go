@@ -329,8 +329,7 @@ func (a *AaveV3) Withdraw(wallet string, token string, amount *big.Int) (*types.
 }
 
 func (a *AaveV3) WithdrawAll(wallet string, token string) (*types.Transaction, error) {
-	maxUint := new(big.Int).SetUint64(math.MaxUint64)
-	return a.Withdraw(wallet, token, maxUint)
+	return a.Withdraw(wallet, token, utils.MaxUint256)
 }
 
 // Borrows the specified token from the protocol.
@@ -392,11 +391,10 @@ func (a *AaveV3) Repay(wallet string, token string, amount *big.Int) (*types.Tra
 	if txErr != nil {
 		return nil, fmt.Errorf("failed to send repay tx: %v", txErr)
 	}
-	log.Printf("Repayed %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
+	log.Printf("Repaid %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
 	return tx, nil
 }
 
 func (a *AaveV3) RepayAll(wallet string, token string) (*types.Transaction, error) {
-	maxUint := new(big.Int).SetUint64(math.MaxUint64)
-	return a.Repay(wallet, token, maxUint)
+	return a.Repay(wallet, token, utils.MaxUint256)
 }
