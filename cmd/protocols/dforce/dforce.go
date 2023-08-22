@@ -311,23 +311,17 @@ func (d *DForce) Supply(wallet string, token string, amount *big.Int) (*types.Tr
 			return nil, fmt.Errorf("failed to mint: %v", err)
 		}
 	} else {
+		// Handle approvals
 		tokenAddress, err := iTokenContract.Underlying(nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get underlying token address: %v", err)
 		}
-		// Handle approvals
 		_, err = transactions.ApproveERC20IfNeeded(d.cl, auth, tokenAddress, walletAddress, iTokenAddress, amount)
 		if err != nil {
 			return nil, fmt.Errorf("failed to approve: %v", err)
 		}
-		// Get decimals
-		decimals, err := iTokenContract.Decimals(nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get decimals: %v", err)
-		}
-		// Dforce uses a whole token as the base unit
-		amountETH := new(big.Int).Div(amount, big.NewInt(int64(math.Pow(10, float64(decimals)))))
-		tx, err = iTokenContract.Mint(auth, walletAddress, amountETH)
+
+		tx, err = iTokenContract.Mint(auth, walletAddress, amount)
 		if err != nil {
 			return nil, fmt.Errorf("failed to mint: %v", err)
 		}
@@ -443,15 +437,7 @@ func (d *DForce) Repay(wallet string, token string, amount *big.Int) (*types.Tra
 		return nil, fmt.Errorf("failed to approve: %v", err)
 	}
 
-	// Get decimals
-	decimals, err := iTokenContract.Decimals(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get decimals: %v", err)
-	}
-	// Dforce uses a whole token as the base unit
-	amountETH := new(big.Int).Div(amount, big.NewInt(int64(math.Pow(10, float64(decimals)))))
-
-	tx, err := iTokenContract.RepayBorrow(auth, amountETH)
+	tx, err := iTokenContract.RepayBorrow(auth, amount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to repay: %v", err)
 	}
@@ -462,17 +448,5 @@ func (d *DForce) Repay(wallet string, token string, amount *big.Int) (*types.Tra
 
 // Repays all of the token to the protocol.
 func (d *DForce) RepayAll(wallet string, token string) (*types.Transaction, error) {
-	iTokenContract, _, err := d.InstantiateIToken(token)
-	if err != nil {
-		return nil, fmt.Errorf("failed to instantiate iToken: %v", err)
-	}
-	walletAddress := common.HexToAddress(wallet)
-
-	// Get borrow balance
-	amount, err := iTokenContract.BorrowBalanceStored(nil, walletAddress)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get borrow balance: %v", err)
-	}
-
-	return d.Repay(wallet, token, amount)
+	return d.Repay(wallet, token, utils.MaxUint256)
 }

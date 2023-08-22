@@ -111,9 +111,6 @@ func ApproveERC20IfNeeded(cl *ethclient.Client, auth *bind.TransactOpts, token, 
 		return nil, fmt.Errorf("failed to get token contract: %v", err)
 	}
 
-	balance, err := tokenContract.BalanceOf(nil, owner)
-	log.Print(token, balance)
-
 	// Get allowance
 	allowance, err := tokenContract.Allowance(nil, owner, spender)
 	if err != nil {
