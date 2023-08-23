@@ -148,13 +148,9 @@ func CalculateStrategiesV2(pms []*t.ProtocolChain) (map[string][]*t.MarketInfo, 
 				continue
 			}
 
-			maxXaPath, ok := maxXaPaths[xaSymbol]
-			// If first or singular lend is better
-			if !ok || xa.SupplyAPY.Cmp(CalculateNetAPYV2(maxXaPath)) == 1 {
-				maxXaPaths[xaSymbol] = []*t.MarketInfo{xa}
-			}
-			// If 2 level APYs are better
-			if CalculateNetAPYV2(maxXbPaths[xaSymbol]).Cmp(CalculateNetAPYV2(maxXaPaths[xaSymbol])) == 1 {
+			_, ok := maxXaPaths[xaSymbol]
+			// If first or 1/2 level APYs are better
+			if !ok || CalculateNetAPYV2(maxXbPaths[xaSymbol]).Cmp(CalculateNetAPYV2(maxXaPaths[xaSymbol])) == 1 {
 				maxXaPaths[xaSymbol] = maxXbPaths[xaSymbol]
 			}
 			// Check 2 and 3 level APYs
