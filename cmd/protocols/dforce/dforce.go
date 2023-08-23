@@ -202,8 +202,8 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 		ltv := new(big.Float).SetInt(ltvInt)
 		ltv.Quo(ltv, utils.ETHMantissa)
 		// APYs
-		supplyAPY := utils.ConvertRatePerBlockToAPY(supplyRatePerBlock)
-		borrowAPY := utils.ConvertRatePerBlockToAPY(borrowRatePerBlock)
+		supplyAPY := utils.ConvertRatePerBlockToAPY(DForceName+":"+d.chain, supplyRatePerBlock)
+		borrowAPY := utils.ConvertRatePerBlockToAPY(DForceName+":"+d.chain, borrowRatePerBlock)
 		// Caps
 		decimalsFactor := big.NewFloat(math.Pow(10, float64(decimals)))
 		supplyCapInt := new(big.Int).Sub(controllerMarket.SupplyCapacity, totalSupply)
@@ -327,6 +327,12 @@ func (d *DForce) Supply(wallet string, token string, amount *big.Int) (*types.Tr
 		}
 	}
 
+	// Wait
+	_, err = txs.WaitForConfirmations(d.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+
 	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
 	return tx, nil
 }
@@ -352,6 +358,12 @@ func (d *DForce) Withdraw(wallet string, token string, amount *big.Int) (*types.
 	tx, err := iTokenContract.RedeemUnderlying(auth, walletAddress, amount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to withdraw: %v", err)
+	}
+
+	// Wait
+	_, err = txs.WaitForConfirmations(d.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
 	}
 
 	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
@@ -388,6 +400,12 @@ func (d *DForce) WithdrawAll(wallet string, token string) (*types.Transaction, e
 		return nil, fmt.Errorf("failed to withdraw: %v", err)
 	}
 
+	// Wait
+	_, err = txs.WaitForConfirmations(d.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+
 	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
 	return tx, nil
 }
@@ -408,6 +426,12 @@ func (d *DForce) Borrow(wallet string, token string, amount *big.Int) (*types.Tr
 	tx, err := iTokenContract.Borrow(auth, amount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to borrow: %v", err)
+	}
+
+	// Wait
+	_, err = txs.WaitForConfirmations(d.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
 	}
 
 	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())
@@ -440,6 +464,12 @@ func (d *DForce) Repay(wallet string, token string, amount *big.Int) (*types.Tra
 	tx, err := iTokenContract.RepayBorrow(auth, amount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to repay: %v", err)
+	}
+
+	// Wait
+	_, err = txs.WaitForConfirmations(d.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
 	}
 
 	log.Printf("Repaid %v %v to %v on %v (%v)", amount, token, DForceName, d.chain, tx.Hash())

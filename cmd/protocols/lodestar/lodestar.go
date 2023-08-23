@@ -2,6 +2,7 @@ package lodestar
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -175,8 +176,8 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 		decimals := uint8(metadata.UnderlyingDecimals.Uint64())
 		ltv := new(big.Float).Quo(new(big.Float).SetInt(metadata.CollateralFactorMantissa), utils.ETHMantissa)
 		ltv.Mul(ltv, big.NewFloat(100))
-		supplyAPY := utils.ConvertRatePerBlockToAPY(metadata.SupplyRatePerBlock)
-		borrowAPY := utils.ConvertRatePerBlockToAPY(metadata.BorrowRatePerBlock)
+		supplyAPY := utils.ConvertRatePerBlockToAPY(LodestarName+":"+l.chain, metadata.SupplyRatePerBlock)
+		borrowAPY := utils.ConvertRatePerBlockToAPY(LodestarName+":"+l.chain, metadata.BorrowRatePerBlock)
 		decimalsFactor := big.NewFloat(math.Pow(10, float64(decimals)))
 		supplyCap := new(big.Float).Quo(supplyCaps[i], decimalsFactor)
 		borrowCap := new(big.Float).Quo(new(big.Float).SetInt(metadata.TotalCash), decimalsFactor)
@@ -192,6 +193,8 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 			BorrowCap:  borrowCap,
 			PriceInUSD: prices[i],
 		}
+		prettySpec, _ := json.MarshalIndent(metadata, "", "  ")
+		log.Print(string(prettySpec))
 		supplyMarkets[i] = market
 		borrowMarkets[i] = market
 	}
@@ -269,6 +272,12 @@ func (l *Lodestar) Supply(wallet string, token string, amount *big.Int) (*types.
 		return nil, fmt.Errorf("failed to mint: %v", err)
 	}
 
+	// Wait
+	_, err = transactions.WaitForConfirmations(l.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+
 	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, LodestarName, l.chain, tx.Hash())
 	return tx, nil
 }
@@ -295,6 +304,12 @@ func (l *Lodestar) Withdraw(wallet string, token string, amount *big.Int) (*type
 	tx, err := lTokenContract.Redeem(auth, amount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to redeem: %v", err)
+	}
+
+	// Wait
+	_, err = transactions.WaitForConfirmations(l.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
 	}
 
 	log.Printf("Withdrew %v %v from %v on %v (%v)", amount, token, LodestarName, l.chain, tx.Hash())
@@ -337,6 +352,12 @@ func (l *Lodestar) Borrow(wallet string, token string, amount *big.Int) (*types.
 		return nil, fmt.Errorf("failed to borrow: %v", err)
 	}
 
+	// Wait
+	_, err = transactions.WaitForConfirmations(l.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	}
+
 	log.Printf("Borrowed %v %v from %v on %v (%v)", amount, token, LodestarName, l.chain, tx.Hash())
 	return tx, nil
 }
@@ -367,6 +388,12 @@ func (l *Lodestar) Repay(wallet string, token string, amount *big.Int) (*types.T
 	tx, err := lTokenContract.RepayBorrow(auth, amount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to repay: %v", err)
+	}
+
+	// Wait
+	_, err = transactions.WaitForConfirmations(l.cl, tx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
 	}
 
 	log.Printf("Repaid %v %v to %v on %v (%v)", amount, token, LodestarName, l.chain, tx.Hash())

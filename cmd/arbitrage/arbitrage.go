@@ -87,6 +87,12 @@ func CalculateStratV2CapsUSD(strat map[string][]*t.MarketInfo) map[string]*big.F
 // Calculates the best strategies with dynamic path lengths and ranks them.
 // Limit to max of 3 levels (lends) to reduce interest rate risk.
 // Seeks to maximize: xa + ra(-ya + xb + rb(xc - yb))
+//
+// Params:
+//   - pms: List of protocol chains
+//
+// Returns:
+//   - map of collateral token symbol to best strategy
 func CalculateStrategiesV2(pms []*t.ProtocolChain) (map[string][]*t.MarketInfo, error) {
 	// Solve 3rd level, max of lend for each asset
 	maxXcs := make(map[string]*t.MarketInfo)
@@ -142,10 +148,10 @@ func CalculateStrategiesV2(pms []*t.ProtocolChain) (map[string][]*t.MarketInfo, 
 				continue
 			}
 
-			maxXaPath, ok := maxXaPaths[xaSymbol]
-			// If first or singular lend is better
-			if !ok || xa.SupplyAPY.Cmp(CalculateNetAPYV2(maxXaPath)) == 1 {
-				maxXaPaths[xaSymbol] = []*t.MarketInfo{xa}
+			_, ok := maxXaPaths[xaSymbol]
+			// If first or 1/2 level APYs are better
+			if !ok || CalculateNetAPYV2(maxXbPaths[xaSymbol]).Cmp(CalculateNetAPYV2(maxXaPaths[xaSymbol])) == 1 {
+				maxXaPaths[xaSymbol] = maxXbPaths[xaSymbol]
 			}
 			// Check 2 and 3 level APYs
 			for _, ya := range pm.BorrowMarkets {
