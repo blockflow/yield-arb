@@ -202,8 +202,8 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 		ltv := new(big.Float).SetInt(ltvInt)
 		ltv.Quo(ltv, utils.ETHMantissa)
 		// APYs
-		supplyAPY := utils.ConvertRatePerBlockToAPY(supplyRatePerBlock)
-		borrowAPY := utils.ConvertRatePerBlockToAPY(borrowRatePerBlock)
+		supplyAPY := utils.ConvertRatePerBlockToAPY(DForceName+":"+d.chain, supplyRatePerBlock)
+		borrowAPY := utils.ConvertRatePerBlockToAPY(DForceName+":"+d.chain, borrowRatePerBlock)
 		// Caps
 		decimalsFactor := big.NewFloat(math.Pow(10, float64(decimals)))
 		supplyCapInt := new(big.Int).Sub(controllerMarket.SupplyCapacity, totalSupply)

@@ -1,8 +1,8 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
-	"math/big"
 	"time"
 	"yield-arb/cmd/arbitrage"
 	"yield-arb/cmd/protocols"
@@ -15,7 +15,8 @@ func main() {
 
 	chains := []string{"arbitrum"}
 	var chainPMs []*types.ProtocolChain
-	ps := []string{"aavev3", "compoundv3", "dforce", "lodestar"}
+	ps := []string{"lodestar"}
+	// ps := []string{"aavev3", "compoundv3", "dforce", "lodestar"}
 	psMap := make(map[string]*protocols.Protocol)
 	for _, protocol := range ps {
 		p, err := protocols.GetProtocol(protocol)
@@ -37,12 +38,13 @@ func main() {
 	stratsV2, _ := arbitrage.CalculateStrategiesV2(chainPMs)
 	caps := arbitrage.CalculateStratV2CapsUSD(stratsV2)
 	for collateral, specs := range stratsV2 {
+		log.Println("----------------------------------------")
 		log.Printf("%v: %v", collateral, arbitrage.CalculateNetAPYV2(specs))
 		log.Printf("Cap in USD: $%v", caps[collateral])
 		for _, spec := range specs {
-			log.Print(spec.Protocol, " ", spec.Token, " ", spec.SupplyAPY, " ", spec.BorrowAPY)
-			// prettySpec, _ := json.MarshalIndent(spec, "", "  ")
-			// log.Print(string(prettySpec))
+			// log.Print(spec.Protocol, " ", spec.Token, " ", spec.SupplyAPY, " ", spec.BorrowAPY)
+			prettySpec, _ := json.MarshalIndent(spec, "", "  ")
+			log.Print(string(prettySpec))
 		}
 	}
 
@@ -51,10 +53,16 @@ func main() {
 	const wallet = "0x18dC22D776aEFefD2538079409176086fcB6C741"
 
 	// Enter strat
-	err := arbitrage.EnterStrategy(wallet, psMap, stratsV2["ETH"], big.NewFloat(1000000000000000), big.NewFloat(50))
-	if err != nil {
-		log.Printf("failed to enter strategy: %v", err)
-	}
+	// err := arbitrage.EnterStrategy(wallet, psMap, stratsV2["ETH"], big.NewFloat(1000000000000000), big.NewFloat(50))
+	// if err != nil {
+	// 	log.Printf("failed to enter strategy: %v", err)
+	// }
+
+	// Exit strat
+	// err := arbitrage.ExitStrategy(wallet, psMap, stratsV2["ETH"])
+	// if err != nil {
+	// 	log.Printf("failed to exit strategy: %v", err)
+	// }
 
 	// Test Deposit()
 	// p, _ := protocols.GetProtocol(protocol)

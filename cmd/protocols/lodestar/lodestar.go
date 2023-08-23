@@ -2,6 +2,7 @@ package lodestar
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -175,8 +176,8 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 		decimals := uint8(metadata.UnderlyingDecimals.Uint64())
 		ltv := new(big.Float).Quo(new(big.Float).SetInt(metadata.CollateralFactorMantissa), utils.ETHMantissa)
 		ltv.Mul(ltv, big.NewFloat(100))
-		supplyAPY := utils.ConvertRatePerBlockToAPY(metadata.SupplyRatePerBlock)
-		borrowAPY := utils.ConvertRatePerBlockToAPY(metadata.BorrowRatePerBlock)
+		supplyAPY := utils.ConvertRatePerBlockToAPY(LodestarName+":"+l.chain, metadata.SupplyRatePerBlock)
+		borrowAPY := utils.ConvertRatePerBlockToAPY(LodestarName+":"+l.chain, metadata.BorrowRatePerBlock)
 		decimalsFactor := big.NewFloat(math.Pow(10, float64(decimals)))
 		supplyCap := new(big.Float).Quo(supplyCaps[i], decimalsFactor)
 		borrowCap := new(big.Float).Quo(new(big.Float).SetInt(metadata.TotalCash), decimalsFactor)
@@ -192,6 +193,8 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 			BorrowCap:  borrowCap,
 			PriceInUSD: prices[i],
 		}
+		prettySpec, _ := json.MarshalIndent(metadata, "", "  ")
+		log.Print(string(prettySpec))
 		supplyMarkets[i] = market
 		borrowMarkets[i] = market
 	}
