@@ -78,11 +78,11 @@ func SignEIP2612Permit(cl *ethclient.Client, chainID *big.Int, chain, token stri
 	}
 
 	// Set deadline to 1 day from now
-	block, err := cl.BlockByNumber(context.Background(), nil)
+	block, err := cl.HeaderByNumber(context.Background(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block: %v", err)
 	}
-	timestamp := big.NewInt(0).SetUint64(block.Time())
+	timestamp := big.NewInt(0).SetUint64(block.Time)
 	deadline := big.NewInt(0).Add(timestamp, big.NewInt(86400))
 
 	domain := apitypes.TypedDataDomain{

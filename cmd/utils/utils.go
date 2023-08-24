@@ -29,6 +29,10 @@ var SecPerYear = big.NewFloat(60 * 60 * 24 * 365)
 var ETHMantissa = new(big.Float).SetUint64(1000000000000000000)  // 10**18
 var ETHMantissaInt = new(big.Int).SetUint64(1000000000000000000) // 10**18
 var ETHBlocksPerDay = big.NewFloat(7200)
+var Ray = new(big.Int).Exp(big.NewInt(10), big.NewInt(27), nil) // 10**27
+var HalfRay = new(big.Int).Div(Ray, big.NewInt(2))
+var PercentageFactor = big.NewInt(10000) // Used for AaveV3 math
+var HalfPercentageFactor = big.NewInt(5000)
 
 // Protocol:chain -> blocks per day
 var BlocksPerYear = map[string]float64{
@@ -230,4 +234,38 @@ func ConvertRatePerBlockToAPY(protocolChain string, ratePerBlock *big.Int) *big.
 
 	apy = big.NewFloat(apyFloat64)
 	return apy
+}
+
+// Convert 18 decimals to 27 decimals
+func WadToRay(wad *big.Int) *big.Int {
+	return new(big.Int).Mul(wad, big.NewInt(1000000000))
+}
+
+// Multiplies two rays, returns a*b/10^27
+func RayMul(a, b *big.Int) *big.Int {
+	result := new(big.Int).Mul(a, b)
+	result.Add(result, HalfRay)
+	return result.Quo(result, Ray)
+}
+
+// Divides two rays, returns a*10^27/b
+func RayDiv(a, b *big.Int) *big.Int {
+	result := new(big.Int).Mul(a, Ray)
+	quo := new(big.Int).Quo(b, big.NewInt(2))
+	result.Add(result, quo)
+	return result.Quo(result, b)
+}
+
+// AaveV3 math
+func PercentMul(value, percentage *big.Int) *big.Int {
+	threshold := new(big.Int).Sub(MaxUint256, HalfPercentageFactor)
+	threshold.Div(threshold, percentage)
+
+	if percentage.Cmp(big.NewInt(0)) == 0 || value.Cmp(threshold) == 1 {
+		panic("Invalid PercentMul args")
+	}
+
+	prod := new(big.Int).Mul(value, percentage)
+	sum := prod.Add(prod, HalfPercentageFactor)
+	return sum.Quo(prod, PercentageFactor)
 }
