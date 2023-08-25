@@ -13,10 +13,10 @@ type MarketInfo struct {
 	Protocol   string `json:"protocol"`
 	Chain      string `json:"chain"`
 	Token      string `json:"token"`
-	Decimals   uint8
+	Decimals   *big.Int
 	LTV        *big.Int    // In basis points, 0 if cannot be collateral
 	PriceInUSD *big.Int    // How much USD is required to purchase 1 ether unit, with 8 decimals
-	Params     interface{} // State of the market, e.g. total supplied, total borrowed, etc.
+	Params     interface{} // State of the market, e.g. total supplied, total borrowed, etc. Cannot be a pointer.
 }
 
 type AccountData struct {

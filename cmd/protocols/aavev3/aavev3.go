@@ -340,7 +340,7 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 			Protocol:   AaveV3Name,
 			Chain:      a.chain,
 			Token:      reserveData.Symbol,
-			Decimals:   uint8(reserveData.Decimals.Int64()),
+			Decimals:   reserveData.Decimals,
 			LTV:        reserveData.BaseLTVasCollateral,
 			PriceInUSD: reserveData.PriceInMarketReferenceCurrency,
 			Params: AaveV3MarketParams{
@@ -389,7 +389,7 @@ func (*AaveV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*b
 	actualAmount := amount
 	if isSupply && params.SupplyCapRemaining.Cmp(amount) == -1 {
 		actualAmount = params.SupplyCapRemaining
-	} else if !isSupply && params.TotalVariableDebt.Cmp(amount) == -1 {
+	} else if !isSupply && params.AvailableLiquidity.Cmp(amount) == -1 {
 		actualAmount = params.AvailableLiquidity
 	}
 

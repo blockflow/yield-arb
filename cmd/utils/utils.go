@@ -26,8 +26,8 @@ var TokenAliases map[string]string
 var MaxUint64 = new(big.Int).SetUint64(^uint64(0))
 var MaxUint256, _ = new(big.Int).SetString("115792089237316195423570985008687907853269984665640564039457584007913129639935", 10)
 var SecPerYear = big.NewFloat(60 * 60 * 24 * 365)
-var ETHMantissa = new(big.Float).SetUint64(1000000000000000000)  // 10**18
-var ETHMantissaInt = new(big.Int).SetUint64(1000000000000000000) // 10**18
+var ETHMantissaFloat = new(big.Float).SetUint64(1000000000000000000) // 10**18
+var ETHMantissaInt = new(big.Int).SetUint64(1000000000000000000)     // 10**18
 var ETHBlocksPerDay = big.NewFloat(7200)
 var Ray = new(big.Int).Exp(big.NewInt(10), big.NewInt(27), nil) // 10**27
 var HalfRay = new(big.Int).Div(Ray, big.NewInt(2))
@@ -35,10 +35,10 @@ var PercentageFactor = big.NewInt(10000) // Used for AaveV3 math
 var HalfPercentageFactor = big.NewInt(5000)
 
 // Protocol:chain -> blocks per day
-var BlocksPerYear = map[string]float64{
-	"dforce:arbitrum":   2425846,
-	"lodestar:arbitrum": 2628000,
-}
+// var BlocksPerYear = map[string]*big.Int{
+// 	"dforce:arbitrum":   big.NewInt(2425846),
+// 	"lodestar:arbitrum": big.NewInt(2628000),
+// }
 
 func init() {
 	// Parse all config json files
@@ -213,27 +213,43 @@ func ConvertRayToPercentage(ray *big.Int) *big.Float {
 	return rayAsFloat
 }
 
-// Converts a per block rate into APY based on ETH block times.
-
+// Converts a per block rate into APY. Uses float64 to avoid overflow.
+//
 // Parameters:
 //   - protocolChain: The protocol chain to calculate the APY for. (e.g. "aave:ethereum")
 //   - ratePerBlock: The rate per block to convert.
 //
 // Returns:
-//   - *big.Float: The APY.
-func ConvertRatePerBlockToAPY(protocolChain string, ratePerBlock *big.Int) *big.Float {
+//   - *big.Int: The APY in ray.
+// func ConvertRatePerBlockToAPY(ratePerBlock, blocksPerYear *big.Int) *big.Int {
+// 	apy := new(big.Float).SetInt(ratePerBlock)
+// 	apy.Quo(apy, ETHMantissaFloat) // Scale by 18 decimals
+// 	apy.Add(apy, big.NewFloat(1))
+
+// 	// Raise to the power of blocks per year
+// 	apyFloat64, _ := apy.Float64()
+// 	apyFloat64 = math.Pow(apyFloat64, float64(blocksPerYear.Uint64()))
+// 	apyFloat64 -= 1
+// 	apyFloat64 *= 100
+
+// 	apy = big.NewFloat(apyFloat64)
+// 	log.Print("APY: ", apy)
+// 	return nil
+// }
+
+func ConvertRatePerBlockToAPY(ratePerBlock, blocksPerYear *big.Int) *big.Int {
 	apy := new(big.Float).SetInt(ratePerBlock)
-	apy.Quo(apy, ETHMantissa) // Scale by 18 decimals
+	apy.Quo(apy, ETHMantissaFloat) // Scale by 18 decimals
 	apy.Add(apy, big.NewFloat(1))
 
 	// Raise to the power of blocks per year
 	apyFloat64, _ := apy.Float64()
-	apyFloat64 = math.Pow(apyFloat64, BlocksPerYear[protocolChain])
+	apyFloat64 = math.Pow(apyFloat64, float64(blocksPerYear.Uint64()))
 	apyFloat64 -= 1
-	apyFloat64 *= 100
 
-	apy = big.NewFloat(apyFloat64)
-	return apy
+	apy = new(big.Float).Mul(big.NewFloat(apyFloat64), new(big.Float).SetInt(Ray))
+	apyInt, _ := apy.Int(nil)
+	return apyInt
 }
 
 // Convert 18 decimals to 27 decimals
