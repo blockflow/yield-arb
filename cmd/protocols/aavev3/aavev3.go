@@ -2,7 +2,6 @@ package aavev3
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -327,13 +326,14 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 			continue
 		}
 
-		decimals := new(big.Int).Exp(big.NewInt(10), reserveData.Decimals, nil)
-
-		amountSupplied := new(big.Int).Add(reserveData.TotalScaledVariableDebt, reserveData.AvailableLiquidity)
-		amountSupplied.Quo(amountSupplied, decimals)
-		supplyCap := new(big.Int).Sub(reserveData.SupplyCap, amountSupplied)
-		if supplyCap.Cmp(big.NewInt(0)) == 0 { // Infinite cap
+		var supplyCap *big.Int
+		if reserveData.SupplyCap.Cmp(big.NewInt(0)) == 0 { // Infinite cap
 			supplyCap = utils.MaxUint256
+		} else {
+			decimals := new(big.Int).Exp(big.NewInt(10), reserveData.Decimals, nil)
+			amountSupplied := new(big.Int).Add(reserveData.TotalScaledVariableDebt, reserveData.AvailableLiquidity)
+			supplyCap = new(big.Int).Mul(reserveData.SupplyCap, decimals)
+			supplyCap.Sub(supplyCap, amountSupplied)
 		}
 
 		market := &t.MarketInfo{
@@ -364,13 +364,6 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 				StableRateExcessOffset:        stableRateExcessOffsets[i],
 			},
 		}
-		if reserveData.Symbol == "DAI" {
-			log.Print(reserveDatas[i].TotalVariableDebt, ", ", reserveDatas[i].TotalStableDebt, ", ", reserveDatas[i].VariableBorrowIndex)
-			prettySpec, _ := json.MarshalIndent(reserveData, "", "  ")
-			log.Print(string(prettySpec))
-			prettySpec, _ = json.MarshalIndent(market, "", "  ")
-			log.Print(string(prettySpec))
-		}
 		supplyMarkets = append(supplyMarkets, market)
 		borrowMarkets = append(borrowMarkets, market)
 	}
@@ -392,31 +385,41 @@ func (*AaveV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*b
 		return nil, nil, fmt.Errorf("failed to cast params to AaveV3MarketParams")
 	}
 
-	// Calculate interest rates
-	currentLiquidityRate, _, currentVariableRate := calculateInterestRates(&params)
+	// Check for caps
+	actualAmount := amount
+	if isSupply && params.SupplyCapRemaining.Cmp(amount) == -1 {
+		actualAmount = params.SupplyCapRemaining
+	} else if !isSupply && params.TotalVariableDebt.Cmp(amount) == -1 {
+		actualAmount = params.AvailableLiquidity
+	}
 
 	if isSupply {
-		return currentLiquidityRate, nil, nil
+		currentLiquidityRate, _, _ := calculateInterestRates(&params, actualAmount, big.NewInt(0))
+		return currentLiquidityRate, actualAmount, nil
 	}
-	return currentVariableRate, nil, nil
+	_, _, currentVariableRate := calculateInterestRates(&params, big.NewInt(0), actualAmount)
+	return currentVariableRate, actualAmount, nil
 }
 
-func calculateInterestRates(params *AaveV3MarketParams) (currentLiquidityRate, currentStableRate, currentVariableRate *big.Int) {
+// Default all borrows to variable rate
+func calculateInterestRates(params *AaveV3MarketParams, liquidityAdded, liquidityTaken *big.Int) (currentLiquidityRate, currentStableRate, currentVariableRate *big.Int) {
 	MAX_EXCESS_USAGE_RATIO := new(big.Int).Sub(utils.Ray, params.OptimalRatio)
 	MAX_EXCESS_STABLE_TO_TOTAL_DEBT_RATIO := new(big.Int).Sub(utils.Ray, params.OptimalStableToTotalDebtRatio)
 
-	totalDebt := new(big.Int).Add(params.TotalStableDebt, params.TotalVariableDebt)
+	totalVariableDebt := new(big.Int).Add(params.TotalVariableDebt, liquidityTaken)
+	totalDebt := new(big.Int).Add(params.TotalStableDebt, totalVariableDebt)
 
 	currentStableRate = params.BaseStableBorrowRate
 	currentVariableRate = params.BaseVariableBorrowRate
 
-	var stableToTotalDebtRatio *big.Int
-	var borrowUsageRatio *big.Int
-	var supplyUsageRatio *big.Int
+	stableToTotalDebtRatio := big.NewInt(0)
+	borrowUsageRatio := big.NewInt(0)
+	supplyUsageRatio := big.NewInt(0)
 
 	if totalDebt.Cmp(big.NewInt(0)) != 0 {
 		stableToTotalDebtRatio = utils.RayDiv(params.TotalStableDebt, totalDebt)
-		availableLiquidity := params.AvailableLiquidity
+		availableLiquidity := new(big.Int).Add(params.AvailableLiquidity, liquidityAdded)
+		availableLiquidity.Sub(availableLiquidity, liquidityTaken)
 
 		availableLiquidityPlusDebt := new(big.Int).Add(availableLiquidity, totalDebt)
 		borrowUsageRatio = utils.RayDiv(totalDebt, availableLiquidityPlusDebt)
@@ -452,7 +455,7 @@ func calculateInterestRates(params *AaveV3MarketParams) (currentLiquidityRate, c
 
 	overallBorrowRate := getOverallBorrowRate(
 		params.TotalStableDebt,
-		params.TotalVariableDebt,
+		totalVariableDebt,
 		currentVariableRate,
 		params.AverageStableRate)
 
