@@ -34,12 +34,6 @@ var HalfRay = new(big.Int).Div(Ray, big.NewInt(2))
 var PercentageFactor = big.NewInt(10000) // Used for AaveV3 math
 var HalfPercentageFactor = big.NewInt(5000)
 
-// Protocol:chain -> blocks per day
-// var BlocksPerYear = map[string]*big.Int{
-// 	"dforce:arbitrum":   big.NewInt(2425846),
-// 	"lodestar:arbitrum": big.NewInt(2628000),
-// }
-
 func init() {
 	// Parse all config json files
 	_, filename, _, _ := runtime.Caller(0)
