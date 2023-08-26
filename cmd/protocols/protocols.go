@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"yield-arb/cmd/protocols/aavev3"
+	"yield-arb/cmd/protocols/compoundv3"
 	"yield-arb/cmd/protocols/dforce"
 	"yield-arb/cmd/protocols/lodestar"
 	t "yield-arb/cmd/protocols/types"
@@ -50,8 +51,8 @@ func GetProtocol(protocol string) (Protocol, error) {
 		return aavev3.NewAaveV3Protocol(), nil
 	// case "compoundv2":
 	// 	return compoundv2.NewCompoundV2Protocol(), nil
-	// case "compoundv3":
-	// 	return compoundv3.NewCompoundV3Protocol(), nil
+	case "compoundv3":
+		return compoundv3.NewCompoundV3Protocol(), nil
 	case "dforce":
 		return dforce.NewDForceProtocol(), nil
 	case "lodestar":

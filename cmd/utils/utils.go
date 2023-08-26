@@ -25,7 +25,7 @@ var TokenAliases map[string]string
 // Constants
 var MaxUint64 = new(big.Int).SetUint64(^uint64(0))
 var MaxUint256, _ = new(big.Int).SetString("115792089237316195423570985008687907853269984665640564039457584007913129639935", 10)
-var SecPerYear = big.NewFloat(60 * 60 * 24 * 365)
+var SecPerYear = big.NewInt(60 * 60 * 24 * 365)
 var ETHMantissaFloat = new(big.Float).SetUint64(1000000000000000000) // 10**18
 var ETHMantissaInt = new(big.Int).SetUint64(1000000000000000000)     // 10**18
 var ETHBlocksPerDay = big.NewFloat(7200)
@@ -278,4 +278,16 @@ func PercentMul(value, percentage *big.Int) *big.Int {
 	prod := new(big.Int).Mul(value, percentage)
 	sum := prod.Add(prod, HalfPercentageFactor)
 	return sum.Quo(prod, PercentageFactor)
+}
+
+// Multiplies two mantissas, returns a*b/10^18
+func ManMul(a, b *big.Int) *big.Int {
+	prod := new(big.Int).Mul(a, b)
+	return prod.Div(prod, ETHMantissaInt)
+}
+
+// Divides two mantissas, returns a*10^18/b
+func ManDiv(a, b *big.Int) *big.Int {
+	prod := new(big.Int).Mul(a, ETHMantissaInt)
+	return prod.Div(prod, b)
 }
