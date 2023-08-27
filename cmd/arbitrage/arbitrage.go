@@ -1,6 +1,12 @@
 package arbitrage
 
-var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
+import (
+	"fmt"
+	"math/big"
+	"yield-arb/cmd/protocols"
+	"yield-arb/cmd/protocols/types"
+	"yield-arb/cmd/utils"
+)
 
 // // Calculates the net APY for the tokenspec triplets
 // func calculateNetAPY(specs []*t.MarketInfo) *big.Float {
@@ -75,12 +81,88 @@ var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
 // 	return result
 // }
 
-// Finds all the strategies that can be made with the given tokens using BFS.
-// Returns a map of token symbol to list of strategies.
+// Finds all the strategies that can be made with the given tokens using BFS in reverse.
 //
 // Params:
 //   - pcs: List of protocol chains
-//   - baseTokens: List of base tokens to start with
-// func GetAllStrats(pcs []*t.ProtocolChain, baseTokens []string) map[string][]*t.MarketInfo {
+//   - maxLevels: Maximum number of levels to search
+//
+// Returns:
+//   - map[string][][]*t.MarketInfo: Map of collateral to list of strategies
+func GetAllStrats(pcs []*types.ProtocolChain, maxLevels int) map[string][][]*types.MarketInfo {
+	// Mapping of base token to list of strategies
+	result := make(map[string][][]*types.MarketInfo)
+	// BFS
+	for level := 0; level < maxLevels; level++ {
+		for _, pc := range pcs {
+			// If first level, only supply tokens
+			if level == 0 {
+				for _, supplyMarket := range pc.SupplyMarkets {
+					symbol := utils.CommonSymbol(supplyMarket.Token)
+					result[symbol] = append(result[symbol], []*types.MarketInfo{supplyMarket})
+				}
+			} else {
+				// Add to existing strategies
+				for _, supplyMarket := range pc.SupplyMarkets {
+					supplySymbol := utils.CommonSymbol(supplyMarket.Token)
+					for _, borrowMarket := range pc.BorrowMarkets {
+						// Skip if same token as supply
+						if supplyMarket.Token == borrowMarket.Token {
+							continue
+						}
+						borrowSymbol := utils.CommonSymbol(borrowMarket.Token)
+						for _, strategy := range result[borrowSymbol] {
+							// Skip if strategy already has level amount
+							if len(strategy) == 2*level+1 {
+								continue
+							}
+							// Skip if same pc (borrowing and lending same token from same protocol)
+							if supplyMarket.Protocol == strategy[0].Protocol && supplyMarket.Chain == strategy[0].Chain {
+								continue
+							}
+							// Add to the front of existing strategy
+							newStrat := make([]*types.MarketInfo, len(strategy)+2)
+							newStrat[0] = supplyMarket
+							newStrat[1] = borrowMarket
+							copy(newStrat[2:], strategy)
+							result[supplySymbol] = append(result[supplySymbol], newStrat)
+						}
+					}
+				}
+			}
+		}
+	}
+	return result
+}
 
-// }
+// Calculates the total APY for the strategy, initial liquidity, and safety factor.
+// Attempts to provide max liquidity at each level.
+func CalcStratAPY(ps map[string]*protocols.Protocol, strat []*types.MarketInfo, initial, safety *big.Int) (*big.Int, *big.Int, error) {
+	if len(strat) == 0 { // Base case
+		return big.NewInt(0), big.NewInt(0)
+	}
+
+	apy := big.NewInt(0)
+	var amount *big.Int
+	*amount = *initial     // Copy value to avoid mutating
+	if len(strat)%2 == 0 { // Lend
+		p := ps[strat[0].Protocol]
+		supplyAPY, supplyAmount, err := (*p).CalcAPY(strat[0], amount, true)
+		if err != nil {
+			return big.NewInt(0), big.NewInt(0), fmt.Errorf("failed to calc supply apy: %v", err)
+		}
+		borrowAPY, borrowAmount, err := (*p).CalcAPY(strat[1], amount, true)
+		if err != nil {
+			return big.NewInt(0), big.NewInt(0), fmt.Errorf("failed to calc borrow apy: %v", err)
+		}
+
+		assetNetAPY := new(big.Float).Sub(strat[1].SupplyAPY, strat[0].BorrowAPY)
+		// If borrowing again
+		nextLevelAPY := CalculateNetAPYV2(strat[2:])
+		ltv := new(big.Float).Quo(strat[0].LTV, big.NewFloat(100))
+		nextLevelAPY.Mul(nextLevelAPY, ltv)
+		return assetNetAPY.Add(assetNetAPY, nextLevelAPY)
+	} else { // Borrow
+		apy.Sub(apy, market.BorrowAPY)
+	}
+}

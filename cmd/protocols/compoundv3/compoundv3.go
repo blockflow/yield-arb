@@ -338,12 +338,6 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 			Params: &CompoundV3Params{
 				SupplyCapRemaining: supplyCap,
 				TotalSupply:        amountsSupplied[i],
-				TotalBorrows:       big.NewInt(0),
-
-				Base:      big.NewInt(0),
-				SlopeLow:  big.NewInt(0),
-				Kink:      big.NewInt(0),
-				SlopeHigh: big.NewInt(0),
 			},
 		}
 	}
@@ -420,6 +414,11 @@ func (c *CompoundV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply boo
 		actualAmount = params.SupplyCapRemaining
 	} else if !isSupply && amount.Cmp(availableLiquidity) == 1 {
 		actualAmount = availableLiquidity
+	}
+
+	// If not base market (totalBorrows is nil), 0 APY
+	if params.TotalBorrows == nil {
+		return big.NewInt(0), actualAmount, nil
 	}
 
 	// Calc utilization

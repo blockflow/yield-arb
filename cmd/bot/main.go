@@ -2,8 +2,8 @@ package main
 
 import (
 	"log"
-	"math/big"
 	"time"
+	"yield-arb/cmd/arbitrage"
 	"yield-arb/cmd/protocols"
 	"yield-arb/cmd/protocols/types"
 )
@@ -15,11 +15,14 @@ func main() {
 	const protocol = "aavev3"
 	const chain = "arbitrum"
 	const wallet = "0x18dC22D776aEFefD2538079409176086fcB6C741"
+	var ApprovedCollateralTokens = []string{"USDC"}
+	// var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
 
 	chains := []string{"arbitrum"}
-	var chainPMs []*types.ProtocolChain
-	ps := []string{"aavev3"}
-	// ps := []string{"aavev3", "compoundv3", "dforce"}
+	var pcs []*types.ProtocolChain
+	// ps := []string{"compoundv3"}
+	ps := []string{"aavev3", "dforce"}
+	// ps := []string{"aavev3", "compoundv3", "dforce", "lodestar"}
 	psMap := make(map[string]*protocols.Protocol)
 	for _, protocol := range ps {
 		p, err := protocols.GetProtocol(protocol)
@@ -33,29 +36,29 @@ func main() {
 			if err != nil {
 				log.Panicf("failed to get markets: %v", err)
 			}
-			chainPMs = append(chainPMs, pms)
+			pcs = append(pcs, pms)
 		}
 
-		apy, amount, err := p.CalcAPY(chainPMs[0].SupplyMarkets[0], big.NewInt(1), false)
-		if err != nil {
-			log.Panicf("failed to calc apy: %v", err)
-		}
-		log.Printf("Token: %v, APY: %v, Amount: %v", chainPMs[0].SupplyMarkets[0].Token, apy, amount)
+		// apy, amount, err := p.CalcAPY(pcs[0].SupplyMarkets[4], new(big.Int).Exp(big.NewInt(0), big.NewInt(24), nil), true)
+		// if err != nil {
+		// 	log.Panicf("failed to calc apy: %v", err)
+		// }
+		// log.Printf("Token: %v, APY: %v, Amount: %v", pcs[0].SupplyMarkets[4].Token, apy, amount)
 	}
 
-	// log.Println("Calculating strategy v2...")
-	// stratsV2, _ := arbitrage.CalculateStrategiesV2(chainPMs)
+	log.Println("Calculating all strats...")
+	collateralStrats := arbitrage.GetAllStrats(pcs, 2)
 	// caps := arbitrage.CalculateStratV2CapsUSD(stratsV2)
-	// for collateral, specs := range stratsV2 {
-	// 	log.Println("----------------------------------------")
-	// 	log.Printf("%v: %v", collateral, arbitrage.CalculateNetAPYV2(specs))
-	// 	log.Printf("Cap in USD: $%v", caps[collateral])
-	// 	for _, spec := range specs {
-	// 		// log.Print(spec.Protocol, " ", spec.Token, " ", spec.SupplyAPY, " ", spec.BorrowAPY)
-	// 		prettySpec, _ := json.MarshalIndent(spec, "", "  ")
-	// 		log.Print(string(prettySpec))
-	// 	}
-	// }
+	for _, collateral := range ApprovedCollateralTokens {
+		log.Println("----------------------------------------")
+		log.Println(collateral)
+		for _, strats := range collateralStrats[collateral] {
+			log.Println("Strat:")
+			for _, market := range strats {
+				log.Println(market.Protocol, " ", market.Token, " ", market.Decimals, " ", market.LTV, " ", market.PriceInUSD)
+			}
+		}
+	}
 
 	// Enter strat
 	// err := arbitrage.EnterStrategy(wallet, psMap, stratsV2["ETH"], big.NewFloat(1000000000000000), big.NewFloat(50))
