@@ -16,13 +16,13 @@ func main() {
 	const protocol = "aavev3"
 	const chain = "arbitrum"
 	const wallet = "0x18dC22D776aEFefD2538079409176086fcB6C741"
-	var ApprovedCollateralTokens = []string{"USDC"}
-	// var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
+	// var ApprovedCollateralTokens = []string{"USDC"}
+	var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
 
-	chains := []string{"arbitrum"}
+	chains := []string{"base"}
 	var pcs []*types.ProtocolChain
 	// ps := []string{"compoundv3"}
-	ps := []string{"aavev3", "dforce"}
+	ps := []string{"aavev3", "compoundv3"}
 	// ps := []string{"aavev3", "compoundv3", "dforce", "lodestar"}
 	psMap := make(map[string]*protocols.Protocol)
 	for _, protocol := range ps {
@@ -63,7 +63,7 @@ func main() {
 	log.Println("Generating steps...")
 	initialAmountUSD := big.NewInt(0)
 	safety := big.NewInt(9000)
-	apy, steps, err := arbitrage.CalcStratSteps(psMap, collateralStrats["USDC"][3], initialAmountUSD, safety)
+	apy, steps, err := arbitrage.CalcStratSteps(psMap, collateralStrats["ETH"][3], initialAmountUSD, safety)
 	if err != nil {
 		log.Panicf("failed to calc strat step: %v", err)
 	}

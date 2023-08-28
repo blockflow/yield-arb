@@ -50,12 +50,13 @@ type CompoundV3Stats struct {
 	BorrowSlopeHigh *big.Int
 }
 
-const CompoundV3Name = "CompoundV3"
+const CompoundV3Name = "compoundv3"
 
 var compv3ConfigAddresses = map[string]string{
 	"arbitrum":        "0xb21b06D71c75973babdE35b49fFDAc3F82Ad3775",
 	"arbitrum_goerli": "0x1Ead344570F0f0a0cD86d95d8adDC7855C8723Fb",
 	"ethereum_goerli": "0xB28495db3eC65A0e3558F040BC4f98A0d588Ae60",
+	"base":            "0x45939657d1CA34A8FA39A924B71D28Fe8431e581",
 }
 
 var compv3CometAddresses = map[string]string{
@@ -64,6 +65,7 @@ var compv3CometAddresses = map[string]string{
 	"ethereum_goerli": "0x3EE77595A8459e93C2888b13aDB354017B198188",
 	"polygon":         "0xF25212E676D1F7F89Cd72fFEe66158f541246445",
 	"polygon_mumbai":  "0xF09F0369aB0a875254fB565E52226c88f10Bc839",
+	"base":            "0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf",
 }
 
 var decimals = map[string]uint8{
