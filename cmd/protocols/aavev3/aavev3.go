@@ -76,6 +76,7 @@ var aavev3AddressesProviders = map[string]string{
 	"avalanche": "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
 	"arbitrum":  "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
 	"optimism":  "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
+	"base":      "0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D",
 	// "fantom",
 	// "harmony",
 	// "metis",
@@ -93,6 +94,7 @@ var uiPoolDataProviders = map[string]string{
 	"avalanche": "0xF71DBe0FAEF1473ffC607d4c555dfF0aEaDb878d",
 	"arbitrum":  "0x145dE30c929a065582da84Cf96F88460dB9745A7",
 	"optimism":  "0xbd83DdBE37fc91923d59C8c1E0bDe0CccCa332d5",
+	"base":      "0x174446a6741300cD2E7C1b1A636Fee99c8F83502",
 	// "fantom",
 	// "harmony",
 	// "metis",
@@ -106,6 +108,7 @@ var uiPoolDataProviders = map[string]string{
 }
 var poolDataProviders = map[string]string{
 	"arbitrum": "0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654",
+	"base":     "0x2d8A3C5677189723C4cB8873CfC9C8976FDF38Ac",
 }
 
 var wethGatewayAddresses = map[string]string{
