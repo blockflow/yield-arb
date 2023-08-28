@@ -336,10 +336,16 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 			supplyCap.Sub(supplyCap, amountSupplied)
 		}
 
+		// Check mapping for USDC.e
+		symbol, err := utils.ConvertAddressToSymbol(a.chain, reserveData.UnderlyingAsset.Hex())
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert address to symbol: %v", err)
+		}
+
 		market := &t.MarketInfo{
 			Protocol:   AaveV3Name,
 			Chain:      a.chain,
-			Token:      reserveData.Symbol,
+			Token:      symbol,
 			Decimals:   reserveData.Decimals,
 			LTV:        reserveData.BaseLTVasCollateral,
 			PriceInUSD: reserveData.PriceInMarketReferenceCurrency,

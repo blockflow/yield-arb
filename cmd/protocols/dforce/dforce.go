@@ -2,7 +2,6 @@ package dforce
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -342,10 +341,6 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 		}
 		supplyMarkets[i] = market
 		borrowMarkets[i] = market
-
-		if i == 1 {
-			log.Print(supplyRatePerBlock, " ", borrowRatePerBlock)
-		}
 	}
 
 	// Fetch interest rate model params
@@ -362,12 +357,6 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 		params.Slope1 = interestRateConstants[i].Slope1
 		params.Slope2 = interestRateConstants[i].Slope2
 		market.Params = params
-
-		// Pretty print json
-		if i == 1 {
-			prettySpec, _ := json.MarshalIndent(market, "", "  ")
-			log.Print(string(prettySpec))
-		}
 	}
 
 	log.Printf("Fetched %v lending tokens & %v borrowing tokens", len(supplyMarkets), len(borrowMarkets))
@@ -405,7 +394,6 @@ func (*DForce) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*b
 		params.TotalCash.Sub(params.TotalCash, actualAmount)
 		rate = getBorrowRate(&params)
 	}
-	log.Print(rate)
 	return utils.ConvertRatePerBlockToAPY(rate, params.BlocksPerYear), actualAmount, nil
 }
 

@@ -61,12 +61,13 @@ func main() {
 	}
 
 	log.Println("Generating steps...")
-	initialAmountUSD := big.NewInt(1e11)
-	apy, steps, err := arbitrage.CalcStratSteps(psMap, collateralStrats["USDC"][3], initialAmountUSD, big.NewInt(900))
+	initialAmountUSD := big.NewInt(0)
+	safety := big.NewInt(9000)
+	apy, steps, err := arbitrage.CalcStratSteps(psMap, collateralStrats["USDC"][3], initialAmountUSD, safety)
 	if err != nil {
 		log.Panicf("failed to calc strat step: %v", err)
 	}
-	log.Printf("APY: %v", apy)
+	log.Printf("APY: %v Safety Factor: %v", apy, safety)
 	for _, step := range steps {
 		log.Printf("Market: %v, IsSupply: %v, APY: %v, Amount: %v", step.Market.Token, step.IsSupply, step.APY, step.Amount)
 	}
