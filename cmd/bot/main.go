@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math/big"
 	"time"
 	"yield-arb/cmd/arbitrage"
 	"yield-arb/cmd/protocols"
@@ -29,7 +30,7 @@ func main() {
 		if err != nil {
 			log.Panicf("Failed to get protocol: %v", err)
 		}
-		psMap[protocol+":"+"arbitrum"] = &p
+		psMap[protocol] = &p
 		for _, chain := range chains {
 			p.Connect(chain)
 			pms, err := p.GetMarkets()
@@ -48,7 +49,6 @@ func main() {
 
 	log.Println("Calculating all strats...")
 	collateralStrats := arbitrage.GetAllStrats(pcs, 2)
-	// caps := arbitrage.CalculateStratV2CapsUSD(stratsV2)
 	for _, collateral := range ApprovedCollateralTokens {
 		log.Println("----------------------------------------")
 		log.Println(collateral)
@@ -58,6 +58,17 @@ func main() {
 				log.Println(market.Protocol, " ", market.Token, " ", market.Decimals, " ", market.LTV, " ", market.PriceInUSD)
 			}
 		}
+	}
+
+	log.Println("Generating steps...")
+	initialAmountUSD := big.NewInt(1e11)
+	apy, steps, err := arbitrage.CalcStratSteps(psMap, collateralStrats["USDC"][3], initialAmountUSD, big.NewInt(900))
+	if err != nil {
+		log.Panicf("failed to calc strat step: %v", err)
+	}
+	log.Printf("APY: %v", apy)
+	for _, step := range steps {
+		log.Printf("Market: %v, IsSupply: %v, APY: %v, Amount: %v", step.Market.Token, step.IsSupply, step.APY, step.Amount)
 	}
 
 	// Enter strat

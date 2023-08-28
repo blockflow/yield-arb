@@ -27,3 +27,10 @@ type AccountData struct {
 	LTV                         *big.Int `json:"ltv"`
 	HealthFactor                *big.Int `json:"healthFactor"`
 }
+
+type StrategyStep struct {
+	Market   *MarketInfo
+	IsSupply bool
+	APY      *big.Int
+	Amount   *big.Int
+}

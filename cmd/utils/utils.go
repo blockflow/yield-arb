@@ -31,7 +31,7 @@ var ETHMantissaInt = new(big.Int).SetUint64(1000000000000000000)     // 10**18
 var ETHBlocksPerDay = big.NewFloat(7200)
 var Ray = new(big.Int).Exp(big.NewInt(10), big.NewInt(27), nil) // 10**27
 var HalfRay = new(big.Int).Div(Ray, big.NewInt(2))
-var PercentageFactor = big.NewInt(10000) // Used for AaveV3 math
+var PercentageFactor = big.NewInt(10000) // Used for AaveV3 math, 10**4
 var HalfPercentageFactor = big.NewInt(5000)
 
 func init() {
@@ -266,7 +266,7 @@ func RayDiv(a, b *big.Int) *big.Int {
 	return result.Quo(result, b)
 }
 
-// AaveV3 math
+// AaveV3 math, returns a*b/10^4
 func PercentMul(value, percentage *big.Int) *big.Int {
 	threshold := new(big.Int).Sub(MaxUint256, HalfPercentageFactor)
 	threshold.Div(threshold, percentage)
@@ -288,6 +288,30 @@ func ManMul(a, b *big.Int) *big.Int {
 
 // Divides two mantissas, returns a*10^18/b
 func ManDiv(a, b *big.Int) *big.Int {
+	prod := new(big.Int).Mul(a, ETHMantissaInt)
+	return prod.Div(prod, b)
+}
+
+// Multiplies two basis points, returns a*b/10^4
+func BasisMul(a, b *big.Int) *big.Int {
+	prod := new(big.Int).Mul(a, b)
+	return prod.Div(prod, PercentageFactor)
+}
+
+// Divides two basis points, returns a*10^4/b
+func BasisDiv(a, b *big.Int) *big.Int {
+	prod := new(big.Int).Mul(a, PercentageFactor)
+	return prod.Div(prod, b)
+}
+
+// Multiplies a price, returns a*b/10^8
+func PriceMul(a, b *big.Int) *big.Int {
+	prod := new(big.Int).Mul(a, b)
+	return prod.Div(prod, ETHMantissaInt)
+}
+
+// Divides a price, returns a*10^8/b
+func PriceDiv(a, b *big.Int) *big.Int {
 	prod := new(big.Int).Mul(a, ETHMantissaInt)
 	return prod.Div(prod, b)
 }

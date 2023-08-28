@@ -2,6 +2,7 @@ package arbitrage
 
 import (
 	"fmt"
+	"log"
 	"math/big"
 	"yield-arb/cmd/protocols"
 	"yield-arb/cmd/protocols/types"
@@ -137,32 +138,104 @@ func GetAllStrats(pcs []*types.ProtocolChain, maxLevels int) map[string][][]*typ
 
 // Calculates the total APY for the strategy, initial liquidity, and safety factor.
 // Attempts to provide max liquidity at each level.
-func CalcStratAPY(ps map[string]*protocols.Protocol, strat []*types.MarketInfo, initial, safety *big.Int) (*big.Int, *big.Int, error) {
+//
+// Params:
+//   - ps: Map of protocol name to protocol
+//   - strat: Strategy to calculate
+//   - initialUSD: Initial liquidity in USD, with 8 decimals
+//   - safety: Safety factor in basis points
+//
+// Returns:
+//   - *big.Int: Total APY in ray
+//   - []*t.StrategyStep: List of steps to take
+//   - error: Error if any
+func CalcStratSteps(ps map[string]*protocols.Protocol, strat []*types.MarketInfo, initialUSD, safety *big.Int) (*big.Int, []*types.StrategyStep, error) {
 	if len(strat) == 0 { // Base case
-		return big.NewInt(0), big.NewInt(0)
+		return big.NewInt(0), nil, nil
 	}
+	log.Print("Initial USD: ", initialUSD)
+	var totalAPY *big.Int
+	defer func() { log.Print("Total APY: ", totalAPY) }()
 
-	apy := big.NewInt(0)
-	var amount *big.Int
-	*amount = *initial     // Copy value to avoid mutating
-	if len(strat)%2 == 0 { // Lend
-		p := ps[strat[0].Protocol]
-		supplyAPY, supplyAmount, err := (*p).CalcAPY(strat[0], amount, true)
+	p, ok := ps[strat[0].Protocol]
+	if !ok {
+		return big.NewInt(0), nil, fmt.Errorf("protocol not found: %v", strat[0].Protocol)
+	}
+	market := strat[0]
+	decimals := new(big.Int).Exp(big.NewInt(10), market.Decimals, nil)
+	initialUSDScaled := new(big.Int).Mul(initialUSD, decimals) // Add decimals
+	if len(strat)%2 == 1 {                                     // Lend
+		supplyInitial := new(big.Int).Div(initialUSDScaled, market.PriceInUSD) // Remove 8 decimals
+		log.Print("supplyInitial: ", supplyInitial)
+		supplyAPY, supplyAmount, err := (*p).CalcAPY(market, supplyInitial, true)
 		if err != nil {
-			return big.NewInt(0), big.NewInt(0), fmt.Errorf("failed to calc supply apy: %v", err)
+			return big.NewInt(0), nil, fmt.Errorf("failed to calc supply apy: %v", err)
 		}
-		borrowAPY, borrowAmount, err := (*p).CalcAPY(strat[1], amount, true)
-		if err != nil {
-			return big.NewInt(0), big.NewInt(0), fmt.Errorf("failed to calc borrow apy: %v", err)
-		}
+		supplyAmountUSD := new(big.Int).Mul(supplyAmount, market.PriceInUSD) // Add 8 decimals
+		// Adjust for LTV and safety factor
+		ltv := utils.BasisMul(market.LTV, safety)
+		supplyAmountUSD = utils.BasisMul(supplyAmountUSD, ltv)
+		supplyAmountUSD.Div(supplyAmountUSD, decimals) // Remove decimals
 
-		assetNetAPY := new(big.Float).Sub(strat[1].SupplyAPY, strat[0].BorrowAPY)
-		// If borrowing again
-		nextLevelAPY := CalculateNetAPYV2(strat[2:])
-		ltv := new(big.Float).Quo(strat[0].LTV, big.NewFloat(100))
-		nextLevelAPY.Mul(nextLevelAPY, ltv)
-		return assetNetAPY.Add(assetNetAPY, nextLevelAPY)
+		// Next level
+		nextLevelAPY, nextSteps, err := CalcStratSteps(ps, strat[1:], supplyAmountUSD, safety)
+		if err != nil {
+			return big.NewInt(0), nil, fmt.Errorf("failed to calc next level apy: %v", err)
+		}
+		nextLevelAPYAdjusted := utils.BasisMul(nextLevelAPY, ltv)
+
+		// TODO: If next level has lower amount, recalculate current level (apy, ltv)
+
+		totalAPY = new(big.Int).Add(supplyAPY, nextLevelAPYAdjusted)
+		totalSteps := make([]*types.StrategyStep, len(nextSteps)+1)
+		totalSteps[0] = &types.StrategyStep{
+			Market:   market,
+			IsSupply: true,
+			APY:      supplyAPY,
+			Amount:   supplyAmount,
+		}
+		copy(totalSteps[1:], nextSteps)
+		return totalAPY, totalSteps, nil
 	} else { // Borrow
-		apy.Sub(apy, market.BorrowAPY)
+		borrowInitial := new(big.Int).Div(initialUSDScaled, market.PriceInUSD) // Remove 8 decimals
+		borrowAPY, borrowAmount, err := (*p).CalcAPY(market, borrowInitial, false)
+		if err != nil {
+			return big.NewInt(0), nil, fmt.Errorf("failed to calc borrow apy: %v", err)
+		}
+		borrowAmountUSD := new(big.Int).Mul(borrowAmount, market.PriceInUSD) // Add 8 decimals
+		borrowAmountUSD.Div(borrowAmountUSD, decimals)                       // Remove decimals
+
+		// Next level
+		nextLevelAPY, nextSteps, err := CalcStratSteps(ps, strat[1:], borrowAmountUSD, safety)
+		if err != nil {
+			return big.NewInt(0), nil, fmt.Errorf("failed to calc next level apy: %v", err)
+		}
+
+		// If next level has lower amount, recalculate current level
+		if nextSteps != nil {
+			nextStep := nextSteps[0]
+			nextStepDecimals := new(big.Int).Exp(big.NewInt(10), nextStep.Market.Decimals, nil)
+			nextStepAmountUSD := new(big.Int).Mul(nextStep.Amount, nextStep.Market.PriceInUSD) // Add 8 decimals
+			nextStepAmountUSD.Div(nextStepAmountUSD, nextStepDecimals)
+			if nextStepAmountUSD.Cmp(borrowAmountUSD) == -1 {
+				newBorrowUSDScaled := new(big.Int).Mul(nextStepAmountUSD, decimals)
+				borrowAmount = newBorrowUSDScaled.Div(newBorrowUSDScaled, market.PriceInUSD)
+				borrowAPY, _, err = (*p).CalcAPY(market, borrowAmount, false)
+				if err != nil {
+					return big.NewInt(0), nil, fmt.Errorf("failed to calc borrow apy: %v", err)
+				}
+			}
+		}
+
+		totalAPY = new(big.Int).Sub(nextLevelAPY, borrowAPY)
+		totalSteps := make([]*types.StrategyStep, len(nextSteps)+1)
+		totalSteps[0] = &types.StrategyStep{
+			Market:   market,
+			IsSupply: false,
+			APY:      borrowAPY,
+			Amount:   borrowAmount,
+		}
+		copy(totalSteps[1:], nextSteps)
+		return totalAPY, totalSteps, nil
 	}
 }
