@@ -2,9 +2,9 @@ package compoundv3
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"math/big"
 	"time"
 	"yield-arb/cmd/accounts"
@@ -26,6 +26,28 @@ type CompoundV3 struct {
 	configContract *Configurator
 	cometAddress   common.Address
 	cometContract  *Comet
+}
+
+type CompoundV3Params struct {
+	SupplyCapRemaining *big.Int
+	TotalSupply        *big.Int
+	TotalBorrows       *big.Int
+	// Constants
+	Base      *big.Int
+	SlopeLow  *big.Int
+	Kink      *big.Int
+	SlopeHigh *big.Int
+}
+
+type CompoundV3Stats struct {
+	TotalSupply     *big.Int
+	TotalBorrows    *big.Int
+	SupplyBase      *big.Int
+	BorrowBase      *big.Int
+	SupplySlopeLow  *big.Int
+	BorrowSlopeLow  *big.Int
+	SupplySlodeHigh *big.Int
+	BorrowSlopeHigh *big.Int
 }
 
 const CompoundV3Name = "CompoundV3"
@@ -104,7 +126,7 @@ func (c *CompoundV3) Connect(chain string) error {
 }
 
 // Uses multicall to reduce RPC calls
-func (c *CompoundV3) getPrices(pfs []common.Address) ([]*big.Float, error) {
+func (c *CompoundV3) getPrices(pfs []common.Address) ([]*big.Int, error) {
 	pfLength := len(pfs)
 	// Aggregate calldata
 	cometABI, err := CometMetaData.GetAbi()
@@ -133,15 +155,14 @@ func (c *CompoundV3) getPrices(pfs []common.Address) ([]*big.Float, error) {
 	type ReturnData struct {
 		Data *big.Int
 	}
-	result := make([]*big.Float, pfLength)
+	result := make([]*big.Int, pfLength)
 	for i, response := range *responses {
 		returnData := new(ReturnData)
 		if err := cometABI.UnpackIntoInterface(returnData, "getPrice", response.ReturnData); err != nil {
 			return nil, fmt.Errorf("failed to unpack asset info: %v", err)
 		}
 		// Prices have 8 decimals for compv3
-		price := new(big.Int).Quo(returnData.Data, big.NewInt(100000000))
-		result[i] = new(big.Float).SetInt(price)
+		result[i] = new(big.Int).Quo(returnData.Data, big.NewInt(100000000))
 	}
 
 	return result, nil
@@ -195,50 +216,74 @@ Seconds Per Year = 60 * 60 * 24 * 365
 Utilization = getUtilization()
 Supply Rate = getSupplyRate(Utilization)
 Supply APR = Supply Rate / (10 ^ 18) * Seconds Per Year * 100
-
-SupplyRate, BorrowRate, BorrowCap (available base)
 */
-func (c *CompoundV3) getBaseStats() (*big.Float, *big.Float, *big.Float, error) {
+func (c *CompoundV3) getBaseStats() (*CompoundV3Stats, error) {
 	// Get utilization
 	utilization, err := c.cometContract.GetUtilization(nil)
 	if err != nil {
-		log.Printf("Failed to get utilization: %v", err)
-		return nil, nil, nil, err
+		return nil, fmt.Errorf("failed to get utilization: %v", err)
 	}
 
 	// Get supply rate
 	supplyRateInt, err := c.cometContract.GetSupplyRate(nil, utilization)
 	if err != nil {
-		log.Printf("Failed to get supply rate: %v", err)
+		return nil, fmt.Errorf("failed to get supply rate: %v", err)
 	}
 	borrowRateInt, err := c.cometContract.GetBorrowRate(nil, utilization)
 	if err != nil {
-		log.Printf("Failed to get borrow rate: %v", err)
+		return nil, fmt.Errorf("failed to get borrow rate: %v", err)
 	}
-	supplyRate := big.NewFloat(float64(supplyRateInt))
-	borrowRate := big.NewFloat(float64(borrowRateInt))
-
-	// Calculate APRs
-	supplyRate.Mul(supplyRate, utils.SecPerYear)
-	borrowRate.Mul(borrowRate, utils.SecPerYear)
-	supplyRate.Mul(supplyRate, big.NewFloat(100))
-	borrowRate.Mul(borrowRate, big.NewFloat(100))
-	supplyRate.Quo(supplyRate, utils.ETHMantissa)
-	borrowRate.Quo(borrowRate, utils.ETHMantissa)
+	log.Print("Util: ", utilization)
+	log.Print("Rates: ", supplyRateInt, borrowRateInt)
 
 	// Get total supply
 	totalSupply, err := c.cometContract.TotalSupply(nil)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to fetch total supply: %v", err)
+		return nil, fmt.Errorf("failed to fetch total supply: %v", err)
 	}
-	utilFloat := new(big.Float).SetInt(utilization)
-	utilizationPerc := utilFloat.Quo(utilFloat, utils.ETHMantissa)
-	totalSupplyAdjustedInt := totalSupply.Quo(totalSupply, big.NewInt(1000000)) // Base factor for compv3 decimals
-	totalSupplyAdjusted := new(big.Float).SetInt(totalSupplyAdjustedInt)
-	amountBorrowed := utilizationPerc.Mul(utilizationPerc, totalSupplyAdjusted)
-	availableLiquidity := new(big.Float).Sub(totalSupplyAdjusted, amountBorrowed)
+	totalBorrows, err := c.cometContract.TotalBorrow(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch total borrows: %v", err)
+	}
 
-	return supplyRate, borrowRate, availableLiquidity, nil
+	// Get base rates
+	supplyRateBase, err := c.cometContract.SupplyPerSecondInterestRateBase(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch supply base rate: %v", err)
+	}
+	borrowRateBase, err := c.cometContract.BorrowPerSecondInterestRateBase(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch borrow base rate: %v", err)
+	}
+
+	// Get slope rates
+	supplySlopeLow, err := c.cometContract.SupplyPerSecondInterestRateSlopeLow(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch supply slope low: %v", err)
+	}
+	borrowSlopeLow, err := c.cometContract.BorrowPerSecondInterestRateSlopeLow(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch borrow slope low: %v", err)
+	}
+	supplySlopeHigh, err := c.cometContract.SupplyPerSecondInterestRateSlopeHigh(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch supply slope high: %v", err)
+	}
+	borrowSlopeHigh, err := c.cometContract.BorrowPerSecondInterestRateSlopeHigh(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch borrow slope high: %v", err)
+	}
+
+	return &CompoundV3Stats{
+		TotalSupply:     totalSupply,
+		TotalBorrows:    totalBorrows,
+		SupplyBase:      supplyRateBase,
+		BorrowBase:      borrowRateBase,
+		SupplySlopeLow:  supplySlopeLow,
+		BorrowSlopeLow:  borrowSlopeLow,
+		SupplySlodeHigh: supplySlopeHigh,
+		BorrowSlopeHigh: borrowSlopeHigh,
+	}, nil
 }
 
 // Returns the markets for the protocol
@@ -279,24 +324,21 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert symbol: %v", err)
 		}
-		decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(assetInfo.Decimals)), nil)
 		// Has LTV, no APY
 		ltv := big.NewFloat(float64(assetInfo.BorrowCollateralFactor))
 		ltv.Quo(ltv, big.NewFloat(10000000000000000))
-		supplyCapInt := new(big.Int).Sub(assetInfo.SupplyCap, amountsSupplied[i])
-		supplyCapInt.Quo(supplyCapInt, decimals)
-		supplyCap := new(big.Float).SetInt(supplyCapInt)
+		supplyCap := new(big.Int).Sub(assetInfo.SupplyCap, amountsSupplied[i])
 		supplyMarkets[i] = &t.MarketInfo{
 			Protocol:   CompoundV3Name,
 			Chain:      c.chain,
 			Token:      symbol,
-			Decimals:   assetInfo.Decimals,
-			LTV:        ltv,
-			SupplyAPY:  big.NewFloat(0),
-			BorrowAPY:  big.NewFloat(0),
-			SupplyCap:  supplyCap,
-			BorrowCap:  big.NewFloat(0),
+			Decimals:   big.NewInt(int64(assetInfo.Decimals)),
+			LTV:        big.NewInt(int64(assetInfo.BorrowCollateralFactor)),
 			PriceInUSD: prices[i],
+			Params: &CompoundV3Params{
+				SupplyCapRemaining: supplyCap,
+				TotalSupply:        amountsSupplied[i],
+			},
 		}
 	}
 
@@ -305,7 +347,7 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert base address to token: %v", err)
 	}
-	supplyAPY, borrowAPY, borrowCap, err := c.getBaseStats()
+	baseStats, err := c.getBaseStats()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get base aprs: %v", err)
 	}
@@ -314,16 +356,38 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 		Protocol:   CompoundV3Name,
 		Chain:      c.chain,
 		Token:      symbol,
-		Decimals:   decimals,
-		LTV:        big.NewFloat(0),
-		SupplyAPY:  supplyAPY,
-		BorrowAPY:  borrowAPY,
-		SupplyCap:  big.NewFloat(math.MaxFloat64),
-		BorrowCap:  borrowCap,
+		Decimals:   big.NewInt(int64(decimals)),
+		LTV:        big.NewInt(0),
 		PriceInUSD: prices[numAssets],
+		Params: &CompoundV3Params{
+			SupplyCapRemaining: utils.MaxUint256,
+			TotalSupply:        baseStats.TotalSupply,
+			TotalBorrows:       baseStats.TotalBorrows,
+
+			Base:      baseStats.SupplyBase,
+			SlopeLow:  baseStats.SupplySlopeLow,
+			Kink:      big.NewInt(int64(config.SupplyKink)),
+			SlopeHigh: baseStats.SupplySlodeHigh,
+		},
 	}
 	supplyMarkets[numAssets] = market
-	borrowMarkets := []*t.MarketInfo{market}
+	borrowMarkets := []*t.MarketInfo{{
+		Protocol:   CompoundV3Name,
+		Chain:      c.chain,
+		Token:      symbol,
+		Decimals:   big.NewInt(int64(decimals)),
+		LTV:        big.NewInt(0),
+		PriceInUSD: prices[numAssets],
+		Params: &CompoundV3Params{
+			SupplyCapRemaining: utils.MaxUint256,
+			TotalSupply:        baseStats.TotalSupply,
+			TotalBorrows:       baseStats.TotalBorrows,
+
+			Base:      baseStats.BorrowBase,
+			SlopeLow:  baseStats.BorrowSlopeLow,
+			Kink:      big.NewInt(int64(config.BorrowKink)),
+			SlopeHigh: baseStats.BorrowSlopeHigh,
+		}}}
 
 	log.Printf("Fetched %v lending tokens & %v borrowing tokens", len(supplyMarkets), len(borrowMarkets))
 	log.Printf("Time elapsed: %v", time.Since(startTime))
@@ -334,6 +398,55 @@ func (c *CompoundV3) GetMarkets() (*t.ProtocolChain, error) {
 		SupplyMarkets: supplyMarkets,
 		BorrowMarkets: borrowMarkets,
 	}, nil
+}
+
+func (c *CompoundV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*big.Int, *big.Int, error) {
+	prettySpec, _ := json.MarshalIndent(market, "", "  ")
+	log.Print(string(prettySpec))
+	params, ok := market.Params.(*CompoundV3Params)
+	if !ok {
+		return nil, nil, fmt.Errorf("failed to cast params to CompoundV3Params")
+	}
+
+	actualAmount := amount
+	availableLiquidity := new(big.Int).Sub(params.TotalSupply, params.TotalBorrows)
+	if isSupply && amount.Cmp(params.SupplyCapRemaining) == 1 {
+		actualAmount = params.SupplyCapRemaining
+	} else if !isSupply && amount.Cmp(availableLiquidity) == 1 {
+		actualAmount = availableLiquidity
+	}
+
+	// If not base market (totalBorrows is nil), 0 APY
+	if params.TotalBorrows == nil {
+		return big.NewInt(0), actualAmount, nil
+	}
+
+	// Calc utilization
+	supply := params.TotalSupply
+	borrows := params.TotalBorrows
+	if isSupply {
+		supply.Add(supply, actualAmount)
+	} else {
+		borrows.Add(borrows, actualAmount)
+	}
+	utilization := new(big.Int).Div(new(big.Int).Mul(borrows, utils.ETHMantissaInt), supply)
+	log.Print("Util: ", utilization)
+
+	// Calculate rate per second
+	var ratePerSecond *big.Int
+	if utilization.Cmp(params.Kink) < 1 {
+		ratePerSecond = new(big.Int).Add(params.Base, utils.ManMul(params.SlopeLow, utilization))
+	} else {
+		ratePerSecond = new(big.Int).Add(params.Base, utils.ManMul(params.SlopeHigh, params.Kink))
+		ratePerSecond.Add(ratePerSecond, utils.ManMul(params.SlopeHigh, new(big.Int).Sub(utilization, params.Kink)))
+	}
+	log.Print("RatePerSecond: ", ratePerSecond)
+
+	// Calculate APY
+	apy := new(big.Int).Mul(ratePerSecond, utils.SecPerYear)
+	apy.Mul(apy, big.NewInt(1e9)) // Convert to ray
+
+	return apy, actualAmount, nil
 }
 
 // Lends the token to the protocol

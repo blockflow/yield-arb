@@ -20,6 +20,10 @@ type Protocol interface {
 	Connect(chain string) error
 	// Returns the markets for the protocol
 	GetMarkets() (*t.ProtocolChain, error)
+	// Returns the APY and actual amount for the given token.
+	// Actual amount is the amount that can be supplied/borrowed.
+	// APY in ray.
+	CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*big.Int, *big.Int, error)
 
 	// // Returns the supply/borrow token balances for the wallet.
 	// // Positive balances are supplied, negative balances are borrowed.

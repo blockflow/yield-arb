@@ -2,10 +2,8 @@ package lodestar
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"math/big"
 	"time"
 	"yield-arb/cmd/accounts"
@@ -29,6 +27,27 @@ type Lodestar struct {
 	lensContract        *Lens
 }
 
+type LodestarParams struct {
+	SupplyCapRemaining    *big.Int
+	TotalBorrows          *big.Int
+	TotalReserves         *big.Int
+	TotalCash             *big.Int
+	ReserveFactorMantissa *big.Int
+	// Constants
+	Kink                   *big.Int
+	BaseRatePerBlock       *big.Int
+	MultiplierPerBlock     *big.Int
+	JumpMultiplierPerBlock *big.Int
+	BlocksPerYear          *big.Int
+}
+
+type InterestRateConstants struct {
+	Kink                   *big.Int
+	BaseRatePerBlock       *big.Int
+	MultiplierPerBlock     *big.Int
+	JumpMultiplierPerBlock *big.Int
+}
+
 const LodestarName = "lodestar"
 
 var comptrollerAddresses = map[string]string{
@@ -38,6 +57,7 @@ var lensAddresses = map[string]string{
 	"arbitrum": "0x24C25910aF4068B5F6C3b75252a36c4810849135",
 }
 var lusdcAddress = common.HexToAddress("0x1ca530f02DD0487cef4943c674342c5aEa08922F")
+var blocksPerYear = big.NewInt(2628000)
 
 func (l *Lodestar) GetChains() ([]string, error) {
 	return []string{"arbitrum"}, nil
@@ -91,6 +111,117 @@ func (l *Lodestar) Connect(chain string) error {
 	return nil
 }
 
+func (l *Lodestar) getInterestRateConstants(markets []common.Address) ([]*InterestRateConstants, error) {
+	// Fetch interest rate models
+	// Pack calldata
+	calls := make([]transactions.Multicall3Call3, len(markets))
+	ltokenABI, err := LTokenMetaData.GetAbi()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ltoken abi: %v", err)
+	}
+	for i, market := range markets {
+		data, err := ltokenABI.Pack("interestRateModel")
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack interest rate model: %v", err)
+		}
+		calls[i] = transactions.Multicall3Call3{
+			Target:   market,
+			CallData: data,
+		}
+	}
+	// Perform multicall
+	responses, err := transactions.HandleMulticall(l.cl, &calls)
+	if err != nil {
+		return nil, fmt.Errorf("failed to multicall: %v", err)
+	}
+	// Unpack responses
+	interestRateModels := make([]*common.Address, len(markets))
+	for i, response := range *responses {
+		interestRateModels[i] = new(common.Address) // Allocate memory
+		if err := ltokenABI.UnpackIntoInterface(interestRateModels[i], "interestRateModel", response.ReturnData); err != nil {
+			return nil, fmt.Errorf("failed to unpack %v: %v", "interestRateModel", err)
+		}
+	}
+
+	// Fetch interest rate constants
+	// Pack calldata
+	calls = make([]transactions.Multicall3Call3, len(interestRateModels)*4)
+	interestRateModelABI, err := InterestRateModelMetaData.GetAbi()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get interest rate model abi: %v", err)
+	}
+	for i, interestRateModel := range interestRateModels {
+		kinkData, err := interestRateModelABI.Pack("kink")
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack kink: %v", err)
+		}
+		baseRatePerBlockData, err := interestRateModelABI.Pack("baseRatePerBlock")
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack baseRatePerBlock: %v", err)
+		}
+		multiplierPerBlockData, err := interestRateModelABI.Pack("multiplierPerBlock")
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack multiplierPerBlock: %v", err)
+		}
+		jumpMultiplierPerBlockData, err := interestRateModelABI.Pack("jumpMultiplierPerBlock")
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack jumpMultiplierPerBlock: %v", err)
+		}
+		calls[i*4] = transactions.Multicall3Call3{
+			Target:   *interestRateModel,
+			CallData: kinkData,
+		}
+		calls[i*4+1] = transactions.Multicall3Call3{
+			Target:   *interestRateModel,
+			CallData: baseRatePerBlockData,
+		}
+		calls[i*4+2] = transactions.Multicall3Call3{
+			Target:   *interestRateModel,
+			CallData: multiplierPerBlockData,
+		}
+		calls[i*4+3] = transactions.Multicall3Call3{
+			Target:   *interestRateModel,
+			CallData: jumpMultiplierPerBlockData,
+		}
+	}
+	// Perform multicall
+	responses, err = transactions.HandleMulticall(l.cl, &calls)
+	if err != nil {
+		return nil, fmt.Errorf("failed to multicall: %v", err)
+	}
+	// Unpack responses
+	type ResponseOutput struct {
+		Data *big.Int
+	}
+	interestRateConstants := make([]*InterestRateConstants, len(interestRateModels))
+	for i := range interestRateConstants {
+		rateConstants := new(InterestRateConstants)
+		output := new(ResponseOutput)
+		if err := interestRateModelABI.UnpackIntoInterface(output, "kink", (*responses)[i*4].ReturnData); err != nil {
+			return nil, fmt.Errorf("failed to unpack %v: %v", "kink", err)
+		}
+		rateConstants.Kink = output.Data
+		output = new(ResponseOutput)
+		if err := interestRateModelABI.UnpackIntoInterface(output, "baseRatePerBlock", (*responses)[i*4+1].ReturnData); err != nil {
+			return nil, fmt.Errorf("failed to unpack %v: %v", "baseRatePerBlock", err)
+		}
+		rateConstants.BaseRatePerBlock = output.Data
+		output = new(ResponseOutput)
+		if err := interestRateModelABI.UnpackIntoInterface(output, "multiplierPerBlock", (*responses)[i*4+2].ReturnData); err != nil {
+			return nil, fmt.Errorf("failed to unpack %v: %v", "multiplierPerBlock", err)
+		}
+		rateConstants.MultiplierPerBlock = output.Data
+		output = new(ResponseOutput)
+		if err := interestRateModelABI.UnpackIntoInterface(output, "jumpMultiplierPerBlock", (*responses)[i*4+3].ReturnData); err != nil {
+			return nil, fmt.Errorf("failed to unpack %v: %v", "jumpMultiplierPerBlock", err)
+		}
+		rateConstants.JumpMultiplierPerBlock = output.Data
+		interestRateConstants[i] = rateConstants
+	}
+
+	return interestRateConstants, nil
+}
+
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
 func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
@@ -123,12 +254,12 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 	}
 
 	// Convert compv2 prices to USD
-	prices := make([]*big.Float, numAssets)
-	usdPrice := big.NewFloat(0)
+	prices := make([]*big.Int, numAssets)
+	usdPrice := big.NewInt(0)
 	for i, metadata := range metadataAll {
-		decimals := uint8(metadata.UnderlyingDecimals.Uint64())
-		price := new(big.Float).SetInt(oraclePrices[i].UnderlyingPrice)
-		price.Quo(price, big.NewFloat(math.Pow(10, 36-float64(decimals))))
+		inverseDecimals := new(big.Int).Sub(big.NewInt(36), metadata.UnderlyingDecimals)
+		price := new(big.Int).Mul(oraclePrices[i].UnderlyingPrice, big.NewInt(10000))
+		price.Quo(price, new(big.Int).Exp(big.NewInt(10), inverseDecimals, nil))
 		if metadata.CToken == lusdcAddress {
 			*usdPrice = *price
 		}
@@ -161,40 +292,51 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 		return nil, fmt.Errorf("failed to multicall: %v", err)
 	}
 	// Unpack responses
-	supplyCaps := make([]*big.Float, numAssets)
+	// TODO: reformat like interestrateconstants
+	supplyCaps := make([]*big.Int, numAssets)
 	for i, response := range *responses {
 		var supplyCap *big.Int
 		if err := comptrollerABI.UnpackIntoInterface(&supplyCap, "supplyCaps", response.ReturnData); err != nil {
 			return nil, fmt.Errorf("failed to unpack %v: %v", "supplyCaps", err)
 		}
-		supplyCaps[i] = new(big.Float).SetInt(supplyCap)
+		supplyCaps[i] = supplyCap
+	}
+
+	// Fetch interest rate constants
+	interestRateConstants, err := l.getInterestRateConstants(markets)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get interest rate constants: %v", err)
 	}
 
 	supplyMarkets := make([]*t.MarketInfo, numAssets)
 	borrowMarkets := make([]*t.MarketInfo, numAssets)
 	for i, metadata := range metadataAll {
-		decimals := uint8(metadata.UnderlyingDecimals.Uint64())
-		ltv := new(big.Float).Quo(new(big.Float).SetInt(metadata.CollateralFactorMantissa), utils.ETHMantissa)
-		ltv.Mul(ltv, big.NewFloat(100))
-		supplyAPY := utils.ConvertRatePerBlockToAPY(LodestarName+":"+l.chain, metadata.SupplyRatePerBlock)
-		borrowAPY := utils.ConvertRatePerBlockToAPY(LodestarName+":"+l.chain, metadata.BorrowRatePerBlock)
-		decimalsFactor := big.NewFloat(math.Pow(10, float64(decimals)))
-		supplyCap := new(big.Float).Quo(supplyCaps[i], decimalsFactor)
-		borrowCap := new(big.Float).Quo(new(big.Float).SetInt(metadata.TotalCash), decimalsFactor)
+		ltv := new(big.Int).Mul(metadata.CollateralFactorMantissa, big.NewInt(10000))
+		ltv.Quo(ltv, utils.ETHMantissaInt)
+		supplyCap := new(big.Int).Sub(supplyCaps[i], metadata.TotalCash)
+		supplyCap.Sub(supplyCap, metadata.TotalBorrows)
+		supplyCap.Add(supplyCap, metadata.TotalReserves)
 		market := &t.MarketInfo{
 			Protocol:   LodestarName,
 			Chain:      l.chain,
 			Token:      symbols[i],
-			Decimals:   decimals,
+			Decimals:   metadata.UnderlyingDecimals,
 			LTV:        ltv,
-			SupplyAPY:  supplyAPY,
-			BorrowAPY:  borrowAPY,
-			SupplyCap:  supplyCap,
-			BorrowCap:  borrowCap,
 			PriceInUSD: prices[i],
+			Params: LodestarParams{
+				SupplyCapRemaining:    supplyCap,
+				TotalBorrows:          metadata.TotalBorrows,
+				TotalReserves:         metadata.TotalReserves,
+				TotalCash:             metadata.TotalCash,
+				ReserveFactorMantissa: metadata.ReserveFactorMantissa,
+
+				Kink:                   interestRateConstants[i].Kink,
+				BaseRatePerBlock:       interestRateConstants[i].BaseRatePerBlock,
+				MultiplierPerBlock:     interestRateConstants[i].MultiplierPerBlock,
+				JumpMultiplierPerBlock: interestRateConstants[i].JumpMultiplierPerBlock,
+				BlocksPerYear:          blocksPerYear,
+			},
 		}
-		prettySpec, _ := json.MarshalIndent(metadata, "", "  ")
-		log.Print(string(prettySpec))
 		supplyMarkets[i] = market
 		borrowMarkets[i] = market
 	}
@@ -208,6 +350,71 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 		SupplyMarkets: supplyMarkets,
 		BorrowMarkets: borrowMarkets,
 	}, nil
+}
+
+func (*Lodestar) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*big.Int, *big.Int, error) {
+	params, ok := market.Params.(LodestarParams)
+	if !ok {
+		return nil, nil, fmt.Errorf("failed to cast params to AaveV3MarketParams")
+	}
+
+	// Check for caps
+	actualAmount := amount
+	availableLiquidity := new(big.Int).Sub(params.TotalCash, params.TotalReserves)
+	if isSupply && params.SupplyCapRemaining.Cmp(amount) == -1 {
+		actualAmount = params.SupplyCapRemaining
+	} else if !isSupply && availableLiquidity.Cmp(amount) == -1 {
+		actualAmount = availableLiquidity
+	}
+
+	var rate *big.Int
+	if isSupply {
+		params.TotalCash.Add(params.TotalCash, actualAmount)
+		rate = getSupplyRate(&params)
+	} else {
+		params.TotalBorrows.Add(params.TotalBorrows, actualAmount)
+		params.TotalCash.Sub(params.TotalCash, actualAmount)
+		rate = getBorrowRate(&params)
+	}
+	return utils.ConvertRatePerBlockToAPY(rate, params.BlocksPerYear), actualAmount, nil
+}
+
+func utilizationRate(params *LodestarParams) *big.Int {
+	if params.TotalBorrows.Cmp(big.NewInt(0)) == 0 {
+		return big.NewInt(0)
+	}
+	util := new(big.Int).Mul(params.TotalBorrows, utils.ETHMantissaInt)
+	denom := new(big.Int).Add(params.TotalCash, params.TotalBorrows)
+	denom.Sub(denom, params.TotalReserves)
+	return util.Div(util, denom)
+}
+
+func getBorrowRate(params *LodestarParams) *big.Int {
+	util := utilizationRate(params)
+
+	if util.Cmp(params.Kink) != 1 {
+		rate := new(big.Int).Mul(util, params.MultiplierPerBlock)
+		rate.Div(rate, utils.ETHMantissaInt)
+		return rate.Add(rate, params.BaseRatePerBlock)
+	} else {
+		normalRate := new(big.Int).Mul(params.Kink, params.MultiplierPerBlock)
+		normalRate.Div(normalRate, utils.ETHMantissaInt)
+		normalRate.Add(normalRate, params.BaseRatePerBlock)
+
+		excessUtil := new(big.Int).Sub(util, params.Kink)
+		excessUtil.Mul(excessUtil, params.JumpMultiplierPerBlock)
+		excessUtil.Div(excessUtil, utils.ETHMantissaInt)
+		return normalRate.Add(normalRate, excessUtil)
+	}
+}
+
+func getSupplyRate(params *LodestarParams) *big.Int {
+	oneMinusReserveFactor := new(big.Int).Sub(utils.ETHMantissaInt, params.ReserveFactorMantissa)
+	borrowRate := getBorrowRate(params)
+	rateToPool := new(big.Int).Mul(borrowRate, oneMinusReserveFactor)
+	rateToPool.Div(rateToPool, utils.ETHMantissaInt)
+	rate := new(big.Int).Mul(utilizationRate(params), rateToPool)
+	return rate.Div(rate, utils.ETHMantissaInt)
 }
 
 // Instantiate lToken contract.

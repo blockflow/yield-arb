@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
 	"math/big"
 	"time"
 	"yield-arb/cmd/accounts"
@@ -29,6 +28,44 @@ type AaveV3 struct {
 	poolContract             *AaveV3Pool
 	uiPoolDataProviderCaller *AaveV3UIPoolDataProviderCaller
 	wethGatewayTransactor    *WETHGatewayTransactor
+}
+
+type AaveV3MarketParams struct {
+	// Self calculated
+	SupplyCapRemaining *big.Int
+	TotalVariableDebt  *big.Int
+	TotalStableDebt    *big.Int
+
+	ReserveFactor          *big.Int
+	AvailableLiquidity     *big.Int
+	AverageStableRate      *big.Int
+	StableRateSlope1       *big.Int
+	StableRateSlope2       *big.Int
+	VariableRateSlope1     *big.Int
+	VariableRateSlope2     *big.Int
+	BaseStableBorrowRate   *big.Int
+	BaseVariableBorrowRate *big.Int
+	OptimalRatio           *big.Int
+	Unbacked               *big.Int
+
+	// Constants not provided by UIPoolDataProvider
+	OptimalStableToTotalDebtRatio *big.Int
+	StableRateExcessOffset        *big.Int
+}
+
+type ReserveData struct {
+	Unbacked                *big.Int
+	AccruedToTreasuryScaled *big.Int
+	TotalAToken             *big.Int
+	TotalStableDebt         *big.Int
+	TotalVariableDebt       *big.Int
+	LiquidityRate           *big.Int
+	VariableBorrowRate      *big.Int
+	StableBorrowRate        *big.Int
+	AverageStableBorrowRate *big.Int
+	LiquidityIndex          *big.Int
+	VariableBorrowIndex     *big.Int
+	LastUpdateTimestamp     *big.Int
 }
 
 const AaveV3Name = "aavev3"
@@ -67,17 +104,13 @@ var uiPoolDataProviders = map[string]string{
 	"optimism_goerli": "0x9277eFbB991536a98a1aA8b735E9D26d887104C1",
 	"polygon_mumbai":  "0x928d9A76705aA6e4a6650BFb7E7912e413Fe7341",
 }
+var poolDataProviders = map[string]string{
+	"arbitrum": "0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654",
+}
 
 var wethGatewayAddresses = map[string]string{
 	// Testnets
 	"ethereum_goerli": "0x2a498323acad2971a8b1936fd7540596dc9bbacd",
-}
-
-var nativeTokens = map[string]string{
-	"ethereum":        "ETH",
-	"ethereum_goerli": "ETH",
-	"arbitrum":        "ETH",
-	"arbitrum_goerli": "AETH",
 }
 
 func (a *AaveV3) GetChains() ([]string, error) {
@@ -132,16 +165,14 @@ func (a *AaveV3) Connect(chain string) error {
 	// Instantiate lending pool
 	poolContract, err := NewAaveV3Pool(lendingPoolAddress, cl)
 	if err != nil {
-		log.Printf("Failed to instantiate Lending Pool: %v", err)
-		return err
+		return fmt.Errorf("failed to instantiate lending pool: %v", err)
 	}
 
 	// Instantiate UIPoolDataProvider
 	uiPoolDataProviderAddress := common.HexToAddress(uiPoolDataProviders[chain])
 	uiPoolDataProviderCaller, err := NewAaveV3UIPoolDataProviderCaller(uiPoolDataProviderAddress, cl)
 	if err != nil {
-		log.Printf("Failed to instantiate UIPoolDataProvider: %v", err)
-		return err
+		return fmt.Errorf("failed to instantiate UIPoolDataProvider: %v", err)
 	}
 
 	// Instantiate WETHGateway
@@ -164,6 +195,104 @@ func (a *AaveV3) Connect(chain string) error {
 	return nil
 }
 
+func (a *AaveV3) getRatios(aggReserveData []IUiPoolDataProviderV3AggregatedReserveData, aggReserveDataLength int) ([]*big.Int, []*big.Int, error) {
+	// Fetch OptimalStableToTotalDebtRatio and StableRateExcessOffset
+	optimalStableToTotalDebtRatios := make([]*big.Int, aggReserveDataLength)
+	stableRateExcessOffsets := make([]*big.Int, aggReserveDataLength)
+	interestRateABI, err := InterestRateStrategyMetaData.GetAbi()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to fetch interest rate strategy abi: %v", err)
+	}
+	// Pack call data
+	calls := make([]transactions.Multicall3Call3, 2*aggReserveDataLength)
+	debtRatioData, err := interestRateABI.Pack("OPTIMAL_STABLE_TO_TOTAL_DEBT_RATIO")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to pack OPTIMAL_STABLE_TO_TOTAL_DEBT_RATIO calldata: %v", err)
+	}
+	maxExcessData, err := interestRateABI.Pack("MAX_EXCESS_USAGE_RATIO")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to pack MAX_EXCESS_USAGE_RATIO calldata: %v", err)
+	}
+	for i, reserveData := range aggReserveData {
+		calls[i] = transactions.Multicall3Call3{
+			Target:   reserveData.InterestRateStrategyAddress,
+			CallData: debtRatioData,
+		}
+		calls[i+aggReserveDataLength] = transactions.Multicall3Call3{
+			Target:   reserveData.InterestRateStrategyAddress,
+			CallData: maxExcessData,
+		}
+	}
+	// Make multicall
+	responses, err := transactions.HandleMulticall(a.cl, &calls)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to handle multicall: %v", err)
+	}
+	// Unpack results
+	type ReturnData struct {
+		Data *big.Int
+	}
+	for i, response := range *responses {
+		returnData := new(ReturnData)
+		if i < aggReserveDataLength {
+			err = interestRateABI.UnpackIntoInterface(returnData, "OPTIMAL_STABLE_TO_TOTAL_DEBT_RATIO", response.ReturnData)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to unpack OPTIMAL_STABLE_TO_TOTAL_DEBT_RATIO: %v", err)
+			}
+			optimalStableToTotalDebtRatios[i] = returnData.Data
+		} else {
+			err = interestRateABI.UnpackIntoInterface(returnData, "MAX_EXCESS_USAGE_RATIO", response.ReturnData)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to unpack MAX_EXCESS_USAGE_RATIO: %v", err)
+			}
+			stableRateExcessOffsets[i-aggReserveDataLength] = returnData.Data
+		}
+	}
+
+	return optimalStableToTotalDebtRatios, stableRateExcessOffsets, nil
+}
+
+func (a *AaveV3) getReserveDatas(aggReserveData []IUiPoolDataProviderV3AggregatedReserveData, aggReserveDataLength int) ([]*ReserveData, error) {
+	// Pack data
+	calls := make([]transactions.Multicall3Call3, aggReserveDataLength)
+	poolDataProviderABI, err := PoolDataProviderMetaData.GetAbi()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch pool data provider abi: %v", err)
+	}
+	poolDataProviderAddress := common.HexToAddress(poolDataProviders[a.chain])
+	for i, reserveData := range aggReserveData {
+		data, err := poolDataProviderABI.Pack("getReserveData", reserveData.UnderlyingAsset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack getReserveData calldata: %v", err)
+		}
+		calls[i] = transactions.Multicall3Call3{
+			Target:   poolDataProviderAddress,
+			CallData: data,
+		}
+	}
+	// Make multicall
+	responses, err := transactions.HandleMulticall(a.cl, &calls)
+	if err != nil {
+		return nil, fmt.Errorf("failed to handle multicall: %v", err)
+	}
+	// Unpack results
+	reserveDatas := make([]*ReserveData, aggReserveDataLength)
+	for i, response := range *responses {
+		reserveData := make([]*big.Int, 12)
+		err = poolDataProviderABI.UnpackIntoInterface(&reserveData, "getReserveData", response.ReturnData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unpack getReserveData: %v", err)
+		}
+		reserveDatas[i] = &ReserveData{
+			TotalStableDebt:     reserveData[3],
+			TotalVariableDebt:   reserveData[4],
+			VariableBorrowIndex: reserveData[10],
+		}
+	}
+
+	return reserveDatas, nil
+}
+
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
 func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
@@ -173,49 +302,73 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 	// Fetch reserve data for all tokens
 	aggReserveData, _, err := a.uiPoolDataProviderCaller.GetReservesData(nil, a.addressesProviderAddress)
 	if err != nil {
-		log.Printf("Failed to fetch reserve data: %v", err)
+		return nil, fmt.Errorf("failed to fetch reserve data: %v", err)
+	}
+	aggReserveDataLength := len(aggReserveData)
+
+	// Fetch OptimalStableToTotalDebtRatio and StableRateExcessOffset
+	optimalStableToTotalDebtRatios, stableRateExcessOffsets, err := a.getRatios(aggReserveData, aggReserveDataLength)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch ratios: %v", err)
+	}
+
+	// Fetch reserve data
+	reserveDatas, err := a.getReserveDatas(aggReserveData, aggReserveDataLength)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch reserve datas: %v", err)
 	}
 
 	// Filter out results for specified symbols
 	var supplyMarkets []*t.MarketInfo
 	var borrowMarkets []*t.MarketInfo
-	for _, reserveData := range aggReserveData {
+	for i, reserveData := range aggReserveData {
 		if reserveData.IsPaused {
 			continue
 		}
 
-		decimals := new(big.Int).Exp(big.NewInt(10), reserveData.Decimals, nil)
-		ltv := new(big.Float).SetInt(reserveData.BaseLTVasCollateral)
-		ltv.Quo(ltv, big.NewFloat(100))
-		lendingAPY := utils.ConvertRayToPercentage(reserveData.LiquidityRate)
-		borrowingAPY := utils.ConvertRayToPercentage(reserveData.VariableBorrowRate)
-
-		amountSupplied := new(big.Int).Add(reserveData.TotalScaledVariableDebt, reserveData.AvailableLiquidity)
-		amountSupplied.Quo(amountSupplied, decimals)
-		supplyCap := new(big.Float).SetInt(new(big.Int).Sub(reserveData.SupplyCap, amountSupplied))
-		if supplyCap.Cmp(big.NewFloat(0)) == 0 { // Infinite cap
-			supplyCap = big.NewFloat(math.MaxFloat64)
+		var supplyCap *big.Int
+		if reserveData.SupplyCap.Cmp(big.NewInt(0)) == 0 { // Infinite cap
+			supplyCap = utils.MaxUint256
+		} else {
+			decimals := new(big.Int).Exp(big.NewInt(10), reserveData.Decimals, nil)
+			amountSupplied := new(big.Int).Add(reserveData.TotalScaledVariableDebt, reserveData.AvailableLiquidity)
+			supplyCap = new(big.Int).Mul(reserveData.SupplyCap, decimals)
+			supplyCap.Sub(supplyCap, amountSupplied)
 		}
 
-		availableLiquidity := new(big.Int).Quo(reserveData.AvailableLiquidity, decimals)
-		borrowCap := new(big.Float).SetInt(availableLiquidity)
-		if borrowCap.Cmp(big.NewFloat(0)) == 0 { // Cap is liquidity
-			borrowCap = new(big.Float).SetInt(reserveData.AvailableLiquidity)
+		// Check mapping for USDC.e
+		symbol, err := utils.ConvertAddressToSymbol(a.chain, reserveData.UnderlyingAsset.Hex())
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert address to symbol: %v", err)
 		}
 
-		priceInUSD := new(big.Float).SetInt(reserveData.PriceInMarketReferenceCurrency)
-		priceInUSD.Quo(priceInUSD, big.NewFloat(100000000))
 		market := &t.MarketInfo{
 			Protocol:   AaveV3Name,
 			Chain:      a.chain,
-			Token:      reserveData.Symbol,
-			Decimals:   uint8(reserveData.Decimals.Int64()),
-			LTV:        ltv,
-			SupplyAPY:  lendingAPY,
-			BorrowAPY:  borrowingAPY,
-			SupplyCap:  supplyCap,
-			BorrowCap:  borrowCap,
-			PriceInUSD: priceInUSD,
+			Token:      symbol,
+			Decimals:   reserveData.Decimals,
+			LTV:        reserveData.BaseLTVasCollateral,
+			PriceInUSD: reserveData.PriceInMarketReferenceCurrency,
+			Params: AaveV3MarketParams{
+				SupplyCapRemaining: supplyCap,
+				TotalVariableDebt:  reserveDatas[i].TotalVariableDebt,
+				TotalStableDebt:    reserveDatas[i].TotalStableDebt,
+
+				ReserveFactor:          reserveData.ReserveFactor,
+				AvailableLiquidity:     reserveData.AvailableLiquidity,
+				AverageStableRate:      reserveData.AverageStableRate,
+				StableRateSlope1:       reserveData.StableRateSlope1,
+				StableRateSlope2:       reserveData.StableRateSlope2,
+				VariableRateSlope1:     reserveData.VariableRateSlope1,
+				VariableRateSlope2:     reserveData.VariableRateSlope2,
+				BaseStableBorrowRate:   reserveData.BaseStableBorrowRate,
+				BaseVariableBorrowRate: reserveData.BaseVariableBorrowRate,
+				OptimalRatio:           reserveData.OptimalUsageRatio,
+				Unbacked:               reserveData.Unbacked,
+
+				OptimalStableToTotalDebtRatio: optimalStableToTotalDebtRatios[i],
+				StableRateExcessOffset:        stableRateExcessOffsets[i],
+			},
 		}
 		supplyMarkets = append(supplyMarkets, market)
 		borrowMarkets = append(borrowMarkets, market)
@@ -230,6 +383,114 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 		SupplyMarkets: supplyMarkets,
 		BorrowMarkets: borrowMarkets,
 	}, nil
+}
+
+func (*AaveV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*big.Int, *big.Int, error) {
+	params, ok := market.Params.(AaveV3MarketParams)
+	if !ok {
+		return nil, nil, fmt.Errorf("failed to cast params to AaveV3MarketParams")
+	}
+
+	// Check for caps
+	actualAmount := amount
+	if isSupply && params.SupplyCapRemaining.Cmp(amount) == -1 {
+		actualAmount = params.SupplyCapRemaining
+	} else if !isSupply && params.AvailableLiquidity.Cmp(amount) == -1 {
+		actualAmount = params.AvailableLiquidity
+	}
+
+	if isSupply {
+		currentLiquidityRate, _, _ := calculateInterestRates(&params, actualAmount, big.NewInt(0))
+		return currentLiquidityRate, actualAmount, nil
+	}
+	_, _, currentVariableRate := calculateInterestRates(&params, big.NewInt(0), actualAmount)
+	return currentVariableRate, actualAmount, nil
+}
+
+// Default all borrows to variable rate
+func calculateInterestRates(params *AaveV3MarketParams, liquidityAdded, liquidityTaken *big.Int) (currentLiquidityRate, currentStableRate, currentVariableRate *big.Int) {
+	MAX_EXCESS_USAGE_RATIO := new(big.Int).Sub(utils.Ray, params.OptimalRatio)
+	MAX_EXCESS_STABLE_TO_TOTAL_DEBT_RATIO := new(big.Int).Sub(utils.Ray, params.OptimalStableToTotalDebtRatio)
+
+	totalVariableDebt := new(big.Int).Add(params.TotalVariableDebt, liquidityTaken)
+	totalDebt := new(big.Int).Add(params.TotalStableDebt, totalVariableDebt)
+
+	currentStableRate = params.BaseStableBorrowRate
+	currentVariableRate = params.BaseVariableBorrowRate
+
+	stableToTotalDebtRatio := big.NewInt(0)
+	borrowUsageRatio := big.NewInt(0)
+	supplyUsageRatio := big.NewInt(0)
+
+	if totalDebt.Cmp(big.NewInt(0)) != 0 {
+		stableToTotalDebtRatio = utils.RayDiv(params.TotalStableDebt, totalDebt)
+		availableLiquidity := new(big.Int).Add(params.AvailableLiquidity, liquidityAdded)
+		availableLiquidity.Sub(availableLiquidity, liquidityTaken)
+
+		availableLiquidityPlusDebt := new(big.Int).Add(availableLiquidity, totalDebt)
+		borrowUsageRatio = utils.RayDiv(totalDebt, availableLiquidityPlusDebt)
+		supplyUsageRatio = utils.RayDiv(totalDebt, new(big.Int).Add(availableLiquidityPlusDebt, params.Unbacked))
+	}
+
+	if borrowUsageRatio.Cmp(params.OptimalRatio) == 1 {
+		excessBorrowUsageRatio := new(big.Int).Sub(borrowUsageRatio, params.OptimalRatio)
+		excessBorrowUsageRatio = utils.RayDiv(excessBorrowUsageRatio, MAX_EXCESS_USAGE_RATIO)
+
+		currentStableRate.Add(currentStableRate, params.StableRateSlope1)
+		currentStableRate.Add(currentStableRate, utils.RayMul(params.StableRateSlope2, excessBorrowUsageRatio))
+
+		currentVariableRate.Add(currentVariableRate, params.VariableRateSlope1)
+		currentVariableRate.Add(currentVariableRate, utils.RayMul(params.VariableRateSlope2, excessBorrowUsageRatio))
+	} else {
+		stableRate := utils.RayMul(params.StableRateSlope1, borrowUsageRatio)
+		stableRate = utils.RayDiv(stableRate, params.OptimalRatio)
+		currentStableRate.Add(currentStableRate, stableRate)
+
+		variableRate := utils.RayMul(params.VariableRateSlope1, borrowUsageRatio)
+		variableRate = utils.RayDiv(variableRate, params.OptimalRatio)
+		currentVariableRate.Add(currentVariableRate, variableRate)
+	}
+
+	if stableToTotalDebtRatio.Cmp(params.OptimalStableToTotalDebtRatio) == 1 {
+		diff := new(big.Int).Sub(stableToTotalDebtRatio, params.OptimalStableToTotalDebtRatio)
+
+		excessStableDebtRatio := utils.RayDiv(diff, MAX_EXCESS_STABLE_TO_TOTAL_DEBT_RATIO)
+
+		currentStableRate.Add(currentStableRate, utils.RayMul(params.StableRateExcessOffset, excessStableDebtRatio))
+	}
+
+	overallBorrowRate := getOverallBorrowRate(
+		params.TotalStableDebt,
+		totalVariableDebt,
+		currentVariableRate,
+		params.AverageStableRate)
+
+	currentLiquidityRate = utils.RayMul(overallBorrowRate, supplyUsageRatio)
+	currentLiquidityRate = utils.PercentMul(currentLiquidityRate,
+		new(big.Int).Sub(utils.PercentageFactor, params.ReserveFactor))
+
+	return
+}
+
+func getOverallBorrowRate(
+	totalStableDebt *big.Int,
+	totalVariableDebt *big.Int,
+	variableRate *big.Int,
+	averageStableRate *big.Int,
+) *big.Int {
+	totalDebt := new(big.Int).Add(totalStableDebt, totalVariableDebt)
+	if totalDebt.Cmp(big.NewInt(0)) == 0 {
+		return big.NewInt(0)
+	}
+
+	weightedVariableRate := utils.RayMul(utils.WadToRay(totalVariableDebt), variableRate)
+
+	weightedStableRate := utils.RayMul(utils.WadToRay(totalStableDebt), averageStableRate)
+
+	overallBorrowRate := new(big.Int).Add(weightedVariableRate, weightedStableRate)
+	overallBorrowRate = utils.RayDiv(overallBorrowRate, utils.WadToRay(totalDebt))
+
+	return overallBorrowRate
 }
 
 // // Returns the token balances for the specified wallet.

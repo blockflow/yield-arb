@@ -1,8 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
+	"math/big"
 	"time"
 	"yield-arb/cmd/arbitrage"
 	"yield-arb/cmd/protocols"
@@ -13,9 +13,16 @@ func main() {
 	log.Println("Starting bot...")
 	startTime := time.Now()
 
+	const protocol = "aavev3"
+	const chain = "arbitrum"
+	const wallet = "0x18dC22D776aEFefD2538079409176086fcB6C741"
+	var ApprovedCollateralTokens = []string{"USDC"}
+	// var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
+
 	chains := []string{"arbitrum"}
-	var chainPMs []*types.ProtocolChain
-	ps := []string{"lodestar"}
+	var pcs []*types.ProtocolChain
+	// ps := []string{"compoundv3"}
+	ps := []string{"aavev3", "dforce"}
 	// ps := []string{"aavev3", "compoundv3", "dforce", "lodestar"}
 	psMap := make(map[string]*protocols.Protocol)
 	for _, protocol := range ps {
@@ -23,34 +30,47 @@ func main() {
 		if err != nil {
 			log.Panicf("Failed to get protocol: %v", err)
 		}
-		psMap[protocol+":"+"arbitrum"] = &p
+		psMap[protocol] = &p
 		for _, chain := range chains {
 			p.Connect(chain)
 			pms, err := p.GetMarkets()
 			if err != nil {
 				log.Panicf("failed to get markets: %v", err)
 			}
-			chainPMs = append(chainPMs, pms)
+			pcs = append(pcs, pms)
 		}
+
+		// apy, amount, err := p.CalcAPY(pcs[0].SupplyMarkets[4], new(big.Int).Exp(big.NewInt(0), big.NewInt(24), nil), true)
+		// if err != nil {
+		// 	log.Panicf("failed to calc apy: %v", err)
+		// }
+		// log.Printf("Token: %v, APY: %v, Amount: %v", pcs[0].SupplyMarkets[4].Token, apy, amount)
 	}
 
-	log.Println("Calculating strategy v2...")
-	stratsV2, _ := arbitrage.CalculateStrategiesV2(chainPMs)
-	caps := arbitrage.CalculateStratV2CapsUSD(stratsV2)
-	for collateral, specs := range stratsV2 {
+	log.Println("Calculating all strats...")
+	collateralStrats := arbitrage.GetAllStrats(pcs, 2)
+	for _, collateral := range ApprovedCollateralTokens {
 		log.Println("----------------------------------------")
-		log.Printf("%v: %v", collateral, arbitrage.CalculateNetAPYV2(specs))
-		log.Printf("Cap in USD: $%v", caps[collateral])
-		for _, spec := range specs {
-			// log.Print(spec.Protocol, " ", spec.Token, " ", spec.SupplyAPY, " ", spec.BorrowAPY)
-			prettySpec, _ := json.MarshalIndent(spec, "", "  ")
-			log.Print(string(prettySpec))
+		log.Println(collateral)
+		for _, strats := range collateralStrats[collateral] {
+			log.Println("Strat:")
+			for _, market := range strats {
+				log.Println(market.Protocol, " ", market.Token, " ", market.Decimals, " ", market.LTV, " ", market.PriceInUSD)
+			}
 		}
 	}
 
-	const protocol = "lodestar"
-	const chain = "arbitrum"
-	const wallet = "0x18dC22D776aEFefD2538079409176086fcB6C741"
+	log.Println("Generating steps...")
+	initialAmountUSD := big.NewInt(0)
+	safety := big.NewInt(9000)
+	apy, steps, err := arbitrage.CalcStratSteps(psMap, collateralStrats["USDC"][3], initialAmountUSD, safety)
+	if err != nil {
+		log.Panicf("failed to calc strat step: %v", err)
+	}
+	log.Printf("APY: %v Safety Factor: %v", apy, safety)
+	for _, step := range steps {
+		log.Printf("Market: %v, IsSupply: %v, APY: %v, Amount: %v", step.Market.Token, step.IsSupply, step.APY, step.Amount)
+	}
 
 	// Enter strat
 	// err := arbitrage.EnterStrategy(wallet, psMap, stratsV2["ETH"], big.NewFloat(1000000000000000), big.NewFloat(50))
@@ -67,7 +87,7 @@ func main() {
 	// Test Deposit()
 	// p, _ := protocols.GetProtocol(protocol)
 	// p.Connect(chain)
-	// _, err := p.Supply(wallet, "lUSDC.e", big.NewInt(1000000))
+	// _, err := p.Supply(wallet, "USDC.e", big.NewInt(1000000))
 	// if err != nil {
 	// 	log.Printf("failed to supply: %v", err)
 	// }
@@ -75,7 +95,7 @@ func main() {
 	// Test Borrow
 	// p, _ := protocols.GetProtocol(protocol)
 	// p.Connect(chain)
-	// _, err := p.Borrow(wallet, "lwstETH", big.NewInt(1))
+	// _, err := p.Borrow(wallet, "AAVE", big.NewInt(441039744165))
 	// if err != nil {
 	// 	log.Printf("failed to borrow: %v", err)
 	// }

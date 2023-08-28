@@ -28,6 +28,28 @@ type DForce struct {
 	oracleAddress      common.Address
 }
 
+type DForceParams struct {
+	SupplyCapRemaining *big.Int
+	TotalSupply        *big.Int
+	TotalBorrows       *big.Int
+	TotalReserves      *big.Int
+	TotalCash          *big.Int
+	ReserveRatio       *big.Int
+
+	Optimal       *big.Int
+	Base          *big.Int
+	Slope1        *big.Int
+	Slope2        *big.Int
+	BlocksPerYear *big.Int
+}
+
+type InterestRateConstants struct {
+	Optimal *big.Int
+	Base    *big.Int
+	Slope1  *big.Int
+	Slope2  *big.Int
+}
+
 const DForceName = "dforce"
 
 var controllerAddresses = map[string]string{
@@ -40,6 +62,9 @@ var nativeToken = "iETH"
 var ignoreTokens = []common.Address{
 	common.HexToAddress("0xe8c85B60Cb3bA32369c699015621813fb2fEA56c"), // TODO: iMUSX, no supply rate?
 	common.HexToAddress("0x5BE49B2e04aC55A17c72aC37E3a85D9602322021"), // TODO: iMEUX, no supply rate?
+}
+var blocksPerYear = map[string]*big.Int{
+	"arbitrum": big.NewInt(2425846),
 }
 
 // Returns the chains supported by the protocol
@@ -91,6 +116,86 @@ func (d *DForce) Connect(chain string) error {
 	return nil
 }
 
+func (l *DForce) getInterestRateConstants(interestRateModels []common.Address) ([]*InterestRateConstants, error) {
+	// Fetch interest rate constants
+	// Pack calldata
+	calls := make([]transactions.Multicall3Call3, len(interestRateModels)*4)
+	interestRateModelABI, err := InterestRateModelMetaData.GetAbi()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get interest rate model abi: %v", err)
+	}
+	for i, interestRateModel := range interestRateModels {
+		kinkData, err := interestRateModelABI.Pack("optimal")
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack optimal: %v", err)
+		}
+		baseRatePerBlockData, err := interestRateModelABI.Pack("base")
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack base: %v", err)
+		}
+		multiplierPerBlockData, err := interestRateModelABI.Pack("slope_1")
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack slope1: %v", err)
+		}
+		jumpMultiplierPerBlockData, err := interestRateModelABI.Pack("slope_2")
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack slope2: %v", err)
+		}
+		calls[i*4] = transactions.Multicall3Call3{
+			Target:   interestRateModel,
+			CallData: kinkData,
+		}
+		calls[i*4+1] = transactions.Multicall3Call3{
+			Target:   interestRateModel,
+			CallData: baseRatePerBlockData,
+		}
+		calls[i*4+2] = transactions.Multicall3Call3{
+			Target:   interestRateModel,
+			CallData: multiplierPerBlockData,
+		}
+		calls[i*4+3] = transactions.Multicall3Call3{
+			Target:   interestRateModel,
+			CallData: jumpMultiplierPerBlockData,
+		}
+	}
+	// Perform multicall
+	responses, err := transactions.HandleMulticall(l.cl, &calls)
+	if err != nil {
+		return nil, fmt.Errorf("failed to multicall: %v", err)
+	}
+	// Unpack responses
+	type ResponseOutput struct {
+		Data *big.Int
+	}
+	interestRateConstants := make([]*InterestRateConstants, len(interestRateModels))
+	for i := range interestRateConstants {
+		rateConstants := new(InterestRateConstants)
+		output := new(ResponseOutput)
+		if err := interestRateModelABI.UnpackIntoInterface(output, "optimal", (*responses)[i*4].ReturnData); err != nil {
+			return nil, fmt.Errorf("failed to unpack %v: %v", "optimal", err)
+		}
+		rateConstants.Optimal = output.Data
+		output = new(ResponseOutput)
+		if err := interestRateModelABI.UnpackIntoInterface(output, "base", (*responses)[i*4+1].ReturnData); err != nil {
+			return nil, fmt.Errorf("failed to unpack %v: %v", "base", err)
+		}
+		rateConstants.Base = output.Data
+		output = new(ResponseOutput)
+		if err := interestRateModelABI.UnpackIntoInterface(output, "slope_1", (*responses)[i*4+2].ReturnData); err != nil {
+			return nil, fmt.Errorf("failed to unpack %v: %v", "slope1", err)
+		}
+		rateConstants.Slope1 = output.Data
+		output = new(ResponseOutput)
+		if err := interestRateModelABI.UnpackIntoInterface(output, "slope_2", (*responses)[i*4+3].ReturnData); err != nil {
+			return nil, fmt.Errorf("failed to unpack %v: %v", "slope2", err)
+		}
+		rateConstants.Slope2 = output.Data
+		interestRateConstants[i] = rateConstants
+	}
+
+	return interestRateConstants, nil
+}
+
 // Returns the markets for the protocol
 func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 	log.Printf("Fetching markets for %v on %v", DForceName, d.chain)
@@ -115,7 +220,7 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 		return nil, fmt.Errorf("failed to get oracle abi: %v", err)
 	}
 	var calls []txs.Multicall3Call3
-	iTokenMethods := []string{"symbol", "decimals", "supplyRatePerBlock", "borrowRatePerBlock", "totalSupply", "getCash"}
+	iTokenMethods := []string{"symbol", "decimals", "supplyRatePerBlock", "borrowRatePerBlock", "totalSupply", "getCash", "interestRateModel", "totalBorrows", "totalReserves", "reserveRatio"}
 	for _, itoken := range allITokens {
 		if slices.Contains[common.Address](ignoreTokens, itoken) {
 			continue
@@ -161,6 +266,7 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 	numTokens := len(allITokens) - len(ignoreTokens) // Exclude ignore token
 	supplyMarkets := make([]*t.MarketInfo, numTokens)
 	borrowMarkets := make([]*t.MarketInfo, numTokens)
+	interestRateModels := make([]common.Address, numTokens)
 	factor := len(iTokenMethods) + 2
 	for i := 0; i < numTokens; i++ {
 		j := i * factor
@@ -171,12 +277,17 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 		var borrowRatePerBlock *big.Int
 		var totalSupply *big.Int
 		var getCash *big.Int
-		results := []interface{}{&symbol, &decimals, &supplyRatePerBlock, &borrowRatePerBlock, &totalSupply, &getCash}
+		var interestRateModel common.Address
+		var totalBorrows *big.Int
+		var totalReserves *big.Int
+		var reserveRatio *big.Int
+		results := []interface{}{&symbol, &decimals, &supplyRatePerBlock, &borrowRatePerBlock, &totalSupply, &getCash, &interestRateModel, &totalBorrows, &totalReserves, &reserveRatio}
 		for k, method := range iTokenMethods {
 			if err := iTokenABI.UnpackIntoInterface(results[k], method, (*responses)[j+k].ReturnData); err != nil {
 				return nil, fmt.Errorf("failed to unpack %v: %v", method, err)
 			}
 		}
+		interestRateModels[i] = interestRateModel
 		// Unpack controller calls
 		var controllerMarket struct {
 			CollateralFactorMantissa *big.Int
@@ -196,56 +307,139 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 			return nil, fmt.Errorf("failed to unpack getUnderlyingPrice: %v", err)
 		}
 
-		// Fill out market info
+		// Fill out market info partially
+		decimalsInt := big.NewInt(int64(decimals))
 		// LTV
-		ltvInt := new(big.Int).Mul(controllerMarket.CollateralFactorMantissa, big.NewInt(100))
-		ltv := new(big.Float).SetInt(ltvInt)
-		ltv.Quo(ltv, utils.ETHMantissa)
-		// APYs
-		supplyAPY := utils.ConvertRatePerBlockToAPY(DForceName+":"+d.chain, supplyRatePerBlock)
-		borrowAPY := utils.ConvertRatePerBlockToAPY(DForceName+":"+d.chain, borrowRatePerBlock)
+		ltv := new(big.Int).Mul(controllerMarket.CollateralFactorMantissa, big.NewInt(1e4))
+		ltv.Quo(ltv, utils.ETHMantissaInt)
 		// Caps
 		decimalsFactor := big.NewFloat(math.Pow(10, float64(decimals)))
-		supplyCapInt := new(big.Int).Sub(controllerMarket.SupplyCapacity, totalSupply)
-		supplyCap := new(big.Float).SetInt(supplyCapInt)
-		supplyCap.Quo(supplyCap, decimalsFactor)
+		supplyCap := new(big.Int).Sub(controllerMarket.SupplyCapacity, totalSupply)
 		borrowCap := new(big.Float).SetInt(getCash)
 		borrowCap.Quo(borrowCap, decimalsFactor)
-		// Price, dforce uses diff decimals for diff tokens?...
-		price := new(big.Float).SetInt(underlyingPrice)
-		commonSymbol := utils.CommonSymbol(symbol)
-		if commonSymbol == "USDC" || commonSymbol == "USDT" {
-			price.Quo(price, big.NewFloat(math.Pow(10, 30)))
-		} else if commonSymbol == "BTC" {
-			price.Quo(price, big.NewFloat(math.Pow(10, 28)))
-		} else {
-			price.Quo(price, utils.ETHMantissa)
-		}
+		// Convert compv2 prices to 8 decimals
+		inverseDecimals := new(big.Int).Sub(big.NewInt(36), decimalsInt)
+		price := new(big.Int).Mul(underlyingPrice, big.NewInt(1e8))
+		price.Quo(price, new(big.Int).Exp(big.NewInt(10), inverseDecimals, nil))
 		market := &t.MarketInfo{
 			Protocol:   DForceName,
 			Chain:      d.chain,
 			Token:      symbol,
-			Decimals:   decimals,
+			Decimals:   decimalsInt,
 			LTV:        ltv,
-			SupplyAPY:  supplyAPY,
-			BorrowAPY:  borrowAPY,
-			SupplyCap:  supplyCap,
-			BorrowCap:  borrowCap,
 			PriceInUSD: price,
+			Params: DForceParams{
+				SupplyCapRemaining: supplyCap,
+				TotalBorrows:       totalBorrows,
+				TotalReserves:      totalReserves,
+				TotalCash:          getCash,
+				ReserveRatio:       reserveRatio,
+
+				TotalSupply:   totalSupply,
+				BlocksPerYear: blocksPerYear[d.chain],
+			},
 		}
 		supplyMarkets[i] = market
 		borrowMarkets[i] = market
 	}
 
+	// Fetch interest rate model params
+	interestRateConstants, err := d.getInterestRateConstants(interestRateModels)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get interest rate constants: %v", err)
+	}
+
+	// Fill out rest of market info
+	for i, market := range supplyMarkets {
+		params := market.Params.(DForceParams)
+		params.Optimal = interestRateConstants[i].Optimal
+		params.Base = interestRateConstants[i].Base
+		params.Slope1 = interestRateConstants[i].Slope1
+		params.Slope2 = interestRateConstants[i].Slope2
+		market.Params = params
+	}
+
 	log.Printf("Fetched %v lending tokens & %v borrowing tokens", len(supplyMarkets), len(borrowMarkets))
 	log.Printf("Time elapsed: %v", time.Since(startTime))
-
 	return &t.ProtocolChain{
 		Protocol:      DForceName,
 		Chain:         d.chain,
 		SupplyMarkets: supplyMarkets,
 		BorrowMarkets: borrowMarkets,
 	}, nil
+}
+
+// A fork of CompoundV2 with different base (instead of Mantissa)
+func (*DForce) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*big.Int, *big.Int, error) {
+	params, ok := market.Params.(DForceParams)
+	if !ok {
+		return nil, nil, fmt.Errorf("failed to cast params to AaveV3MarketParams")
+	}
+
+	// Check for caps
+	actualAmount := amount
+	availableLiquidity := new(big.Int).Sub(params.TotalCash, params.TotalReserves)
+	if isSupply && params.SupplyCapRemaining.Cmp(amount) == -1 {
+		actualAmount = params.SupplyCapRemaining
+	} else if !isSupply && availableLiquidity.Cmp(amount) == -1 {
+		actualAmount = availableLiquidity
+	}
+
+	var rate *big.Int
+	if isSupply {
+		params.TotalCash.Add(params.TotalCash, actualAmount)
+		rate = getSupplyRate(&params)
+	} else {
+		params.TotalBorrows.Add(params.TotalBorrows, actualAmount)
+		params.TotalCash.Sub(params.TotalCash, actualAmount)
+		rate = getBorrowRate(&params)
+	}
+	return utils.ConvertRatePerBlockToAPY(rate, params.BlocksPerYear), actualAmount, nil
+}
+
+// TODO: Add checks for 100% utilization rate
+// (https://github.com/dforce-network/LendingContractsV2/blob/master/contracts/InterestRateModel/InterestRateModel.sol#L87)
+func utilizationRate(params *DForceParams) *big.Int {
+	if params.TotalBorrows.Cmp(big.NewInt(0)) == 0 {
+		return big.NewInt(0)
+	}
+	borrowsMantissa := new(big.Int).Mul(params.TotalBorrows, utils.ETHMantissaInt)
+	supply := new(big.Int).Add(params.TotalCash, params.TotalBorrows)
+	supply.Sub(supply, params.TotalReserves)
+	return new(big.Int).Div(borrowsMantissa, supply)
+}
+
+func getBorrowRate(params *DForceParams) *big.Int {
+	util := utilizationRate(params)
+
+	var rate *big.Int
+	if util.Cmp(params.Optimal) != 1 {
+		rate = new(big.Int).Mul(util, params.Slope1)
+		rate.Div(rate, params.Optimal)
+		rate.Add(rate, params.Base)
+	} else {
+		baseRates := new(big.Int).Add(params.Base, params.Slope1)
+
+		excessUtil := new(big.Int).Sub(util, params.Optimal)
+		maxExcellUtil := new(big.Int).Sub(utils.ETHMantissaInt, params.Optimal)
+		excessRate := new(big.Int).Mul(excessUtil, params.Slope2)
+
+		rate = new(big.Int).Add(baseRates, excessRate)
+		rate.Div(rate, maxExcellUtil)
+	}
+
+	// Divide by blocks per year
+	return rate.Div(rate, params.BlocksPerYear)
+}
+
+// supplyRate = borrowRate × (1-reserveFactor) × borrowsPer
+func getSupplyRate(params *DForceParams) *big.Int {
+	borrowRate := getBorrowRate(params)
+	oneMinusReserveRatio := new(big.Int).Sub(utils.ETHMantissaInt, params.ReserveRatio)
+	util := utilizationRate(params)
+	rate := new(big.Int).Mul(borrowRate, oneMinusReserveRatio)
+	rate.Mul(rate, util)
+	return rate.Div(rate, new(big.Int).Exp(utils.ETHMantissaInt, big.NewInt(2), nil))
 }
 
 // Instantiate iToken contract.
