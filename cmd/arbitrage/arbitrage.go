@@ -1,12 +1,15 @@
 package arbitrage
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
 	"yield-arb/cmd/protocols"
 	"yield-arb/cmd/protocols/types"
 	"yield-arb/cmd/utils"
+
+	"golang.org/x/exp/slices"
 )
 
 // // Calculates the net APY for the tokenspec triplets
@@ -165,7 +168,11 @@ func CalcStratSteps(ps map[string]*protocols.Protocol, strat []*types.MarketInfo
 	isSupply := len(strat)%2 == 1
 	market := strat[0]
 	decimals := new(big.Int).Exp(big.NewInt(10), market.Decimals, nil)
-	initialUSDScaled := new(big.Int).Mul(initialUSD, decimals)             // Add decimals
+	initialUSDScaled := new(big.Int).Mul(initialUSD, decimals) // Add decimals
+	if market.PriceInUSD.Cmp(big.NewInt(0)) == 0 {             // If price is 0, assume 1
+		b, _ := json.MarshalIndent(market, "", "  ")
+		return big.NewInt(0), nil, fmt.Errorf("price is 0: %v", string(b)) // TODO: Remove this
+	}
 	initialAmount := new(big.Int).Div(initialUSDScaled, market.PriceInUSD) // Remove 8 decimals
 
 	currentAPY, currentAmount, err := (*p).CalcAPY(market, initialAmount, isSupply)
@@ -226,4 +233,41 @@ func CalcStratSteps(ps map[string]*protocols.Protocol, strat []*types.MarketInfo
 	}
 	copy(totalSteps[1:], nextSteps)
 	return totalAPY, totalSteps, nil
+}
+
+// Calculates the strategies' steps and total APYs.
+//
+// Params:
+//   - ps: Map of protocol name to protocol
+//   - strats: List of strategies to calculate
+//   - initialUSD: Initial liquidity in USD, with 8 decimals
+//   - safety: Safety factor in basis points
+//
+// Returns:
+//   - []*t.Strategy: List of strategies with steps and total APYs
+//   - error: Error if any
+func CalcStrategies(ps map[string]*protocols.Protocol, strats [][]*types.MarketInfo, initialUSD, safety *big.Int) ([]*types.Strategy, error) {
+	result := make([]*types.Strategy, len(strats))
+	for i, strat := range strats {
+		totalAPY, steps, err := CalcStratSteps(ps, strat, initialUSD, safety)
+		if err != nil {
+			return nil, fmt.Errorf("failed to calc strat steps: %v", err)
+		}
+		result[i] = &types.Strategy{
+			Steps: steps,
+			APY:   totalAPY,
+		}
+	}
+	return result, nil
+}
+
+// Compares the two strategies' APYs.
+// Returns true if a is larger than b, false otherwise.
+func apyMore(a, b *types.Strategy) bool {
+	return a.APY.Cmp(b.APY) == 1
+}
+
+// Sorts the strategies by APY in descending order.
+func SortStrategies(strats []*types.Strategy) {
+	slices.SortFunc[*types.Strategy](strats, apyMore)
 }

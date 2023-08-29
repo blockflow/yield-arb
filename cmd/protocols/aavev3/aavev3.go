@@ -107,6 +107,7 @@ var uiPoolDataProviders = map[string]string{
 	"polygon_mumbai":  "0x928d9A76705aA6e4a6650BFb7E7912e413Fe7341",
 }
 var poolDataProviders = map[string]string{
+	"ethereum": "0x7B4EB56E7CD4b454BA8ff71E4518426369a138a3",
 	"arbitrum": "0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654",
 	"base":     "0x2d8A3C5677189723C4cB8873CfC9C8976FDF38Ac",
 }
@@ -298,7 +299,7 @@ func (a *AaveV3) getReserveDatas(aggReserveData []IUiPoolDataProviderV3Aggregate
 
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
-func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
+func (a *AaveV3) GetMarkets() ([]*t.ProtocolChain, error) {
 	log.Printf("Fetching market data for %v...", a.chain)
 	startTime := time.Now()
 
@@ -380,12 +381,12 @@ func (a *AaveV3) GetMarkets() (*t.ProtocolChain, error) {
 	log.Printf("Fetched %v lending tokens & %v borrowing tokens", len(supplyMarkets), len(borrowMarkets))
 	log.Printf("Time elapsed: %v", time.Since(startTime))
 
-	return &t.ProtocolChain{
+	return []*t.ProtocolChain{{
 		Protocol:      AaveV3Name,
 		Chain:         a.chain,
 		SupplyMarkets: supplyMarkets,
 		BorrowMarkets: borrowMarkets,
-	}, nil
+	}}, nil
 }
 
 func (*AaveV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*big.Int, *big.Int, error) {
