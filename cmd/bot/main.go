@@ -17,8 +17,8 @@ func main() {
 	const protocol = "aavev3"
 	const chain = "arbitrum"
 	const wallet = "0x18dC22D776aEFefD2538079409176086fcB6C741"
-	// var ApprovedCollateralTokens = []string{"USDC"}
-	var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
+	var ApprovedCollateralTokens = []string{"ETH"}
+	// var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
 
 	chains := []string{"base"}
 	var pcs []*types.ProtocolChain
@@ -38,16 +38,14 @@ func main() {
 			if err != nil {
 				log.Panicf("failed to get markets: %v", err)
 			}
-			for _, pm := range pms {
-				pcs = append(pcs, pm)
-			}
+			pcs = append(pcs, pms...)
 		}
-
-		// apy, amount, err := p.CalcAPY(pcs[0].SupplyMarkets[4], new(big.Int).Exp(big.NewInt(0), big.NewInt(24), nil), true)
+		// market := pcs[0].SupplyMarkets[2]
+		// apy, amount, err := p.CalcAPY(market, new(big.Int).Exp(big.NewInt(10), big.NewInt(12), nil), true)
 		// if err != nil {
 		// 	log.Panicf("failed to calc apy: %v", err)
 		// }
-		// log.Printf("Token: %v, APY: %v, Amount: %v", pcs[0].SupplyMarkets[4].Token, apy, amount)
+		// log.Printf("Token: %v, APY: %v, Amount: %v", market.Token, apy, amount)
 	}
 
 	log.Println("Calculating all strats...")
@@ -78,7 +76,8 @@ func main() {
 	log.Println("Generating all steps...")
 	initialAmountUSD := big.NewInt(1e8)
 	safety := big.NewInt(9000)
-	strats := make([][]*types.MarketInfo, 0)
+	strats := make([][]*types.MarketInfo, 1)
+	// strats[0] = collateralStrats["ETH"][4]
 	for _, collateral := range ApprovedCollateralTokens {
 		collStrats, ok := collateralStrats[collateral]
 		if ok {
@@ -90,7 +89,6 @@ func main() {
 		log.Panicf("failed to calc strategies: %v", err)
 	}
 	arbitrage.SortStrategies(strategies)
-	// Pretty print first 5
 	for _, strat := range strategies[:5] {
 		log.Println("----------------------------------------")
 		log.Printf("APY: %v", utils.ConvertRayToPercentage(strat.APY))
