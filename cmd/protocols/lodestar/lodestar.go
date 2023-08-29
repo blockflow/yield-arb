@@ -224,7 +224,7 @@ func (l *Lodestar) getInterestRateConstants(markets []common.Address) ([]*Intere
 
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
-func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
+func (l *Lodestar) GetMarkets() ([]*t.ProtocolChain, error) {
 	log.Printf("Fetching market data for %v...", l.chain)
 	startTime := time.Now()
 
@@ -344,12 +344,12 @@ func (l *Lodestar) GetMarkets() (*t.ProtocolChain, error) {
 	log.Printf("Fetched %v lending tokens & %v borrowing tokens", len(supplyMarkets), len(borrowMarkets))
 	log.Printf("Time elapsed: %v", time.Since(startTime))
 
-	return &t.ProtocolChain{
+	return []*t.ProtocolChain{{
 		Protocol:      LodestarName,
 		Chain:         l.chain,
 		SupplyMarkets: supplyMarkets,
 		BorrowMarkets: borrowMarkets,
-	}, nil
+	}}, nil
 }
 
 func (*Lodestar) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*big.Int, *big.Int, error) {

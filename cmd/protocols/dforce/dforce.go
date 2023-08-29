@@ -197,7 +197,7 @@ func (l *DForce) getInterestRateConstants(interestRateModels []common.Address) (
 }
 
 // Returns the markets for the protocol
-func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
+func (d *DForce) GetMarkets() ([]*t.ProtocolChain, error) {
 	log.Printf("Fetching markets for %v on %v", DForceName, d.chain)
 	startTime := time.Now()
 	// Get all tokens
@@ -361,12 +361,12 @@ func (d *DForce) GetMarkets() (*t.ProtocolChain, error) {
 
 	log.Printf("Fetched %v lending tokens & %v borrowing tokens", len(supplyMarkets), len(borrowMarkets))
 	log.Printf("Time elapsed: %v", time.Since(startTime))
-	return &t.ProtocolChain{
+	return []*t.ProtocolChain{{
 		Protocol:      DForceName,
 		Chain:         d.chain,
 		SupplyMarkets: supplyMarkets,
 		BorrowMarkets: borrowMarkets,
-	}, nil
+	}}, nil
 }
 
 // A fork of CompoundV2 with different base (instead of Mantissa)

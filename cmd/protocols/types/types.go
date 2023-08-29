@@ -34,3 +34,8 @@ type StrategyStep struct {
 	APY      *big.Int
 	Amount   *big.Int
 }
+
+type Strategy struct {
+	Steps []*StrategyStep
+	APY   *big.Int
+}
