@@ -192,9 +192,14 @@ func CalcStratSteps(ps map[string]*protocols.Protocol, strat []*types.MarketInfo
 		if err != nil {
 			return big.NewInt(0), nil, fmt.Errorf("failed to calc next level apy: %v", err)
 		}
-		nextLevelAPYAdjusted := utils.BasisMul(nextLevelAPY, ltv) // Percentage
-
-		// TODO: If next level has lower amount, recalculate current level (apy, ltv)
+		// Calculating manually instead of using ltv to account for lower amount in next level
+		var nextLevelAPYAdjusted *big.Int
+		if nextSteps != nil {
+			nextLevelAPYAdjusted = new(big.Int).Mul(nextLevelAPY, nextSteps[0].Amount)
+			nextLevelAPYAdjusted.Div(nextLevelAPYAdjusted, currentAmount)
+		} else {
+			nextLevelAPYAdjusted = nextLevelAPY // Should be 0
+		}
 
 		totalAPY = new(big.Int).Add(currentAPY, nextLevelAPYAdjusted)
 	} else { // Borrow

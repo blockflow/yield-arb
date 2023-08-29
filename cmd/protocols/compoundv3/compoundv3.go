@@ -310,8 +310,6 @@ func (c *CompoundV3) GetMarkets() ([]*t.ProtocolChain, error) {
 		}
 
 		// Get config
-		log.Print(c.configAddress)
-		log.Print(c.cometAddress)
 		config, err := c.configContract.GetConfiguration(nil, c.cometAddress)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch configuration: %v", err)
@@ -437,12 +435,14 @@ func (c *CompoundV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply boo
 		return big.NewInt(0), amount, nil
 	}
 
-	actualAmount := amount
+	var actualAmount *big.Int
 	availableLiquidity := new(big.Int).Sub(params.TotalSupply, params.TotalBorrows)
 	if isSupply && amount.Cmp(params.SupplyCapRemaining) == 1 {
-		actualAmount = params.SupplyCapRemaining
+		actualAmount = new(big.Int).Set(params.SupplyCapRemaining)
 	} else if !isSupply && amount.Cmp(availableLiquidity) == 1 {
-		actualAmount = availableLiquidity
+		actualAmount = new(big.Int).Set(availableLiquidity)
+	} else {
+		actualAmount = new(big.Int).Set(amount)
 	}
 
 	// If not base market (totalBorrows is nil), 0 APY
@@ -454,9 +454,9 @@ func (c *CompoundV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply boo
 	supply := params.TotalSupply
 	borrows := params.TotalBorrows
 	if isSupply {
-		supply.Add(supply, actualAmount)
+		supply = new(big.Int).Add(supply, actualAmount)
 	} else {
-		borrows.Add(borrows, actualAmount)
+		borrows = new(big.Int).Add(borrows, actualAmount)
 	}
 	utilization := new(big.Int).Div(new(big.Int).Mul(borrows, utils.ETHMantissaInt), supply)
 

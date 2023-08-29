@@ -419,8 +419,8 @@ func calculateInterestRates(params *AaveV3MarketParams, liquidityAdded, liquidit
 	totalVariableDebt := new(big.Int).Add(params.TotalVariableDebt, liquidityTaken)
 	totalDebt := new(big.Int).Add(params.TotalStableDebt, totalVariableDebt)
 
-	currentStableRate = params.BaseStableBorrowRate
-	currentVariableRate = params.BaseVariableBorrowRate
+	currentStableRate = new(big.Int).Set(params.BaseStableBorrowRate)
+	currentVariableRate = new(big.Int).Set(params.BaseVariableBorrowRate)
 
 	stableToTotalDebtRatio := big.NewInt(0)
 	borrowUsageRatio := big.NewInt(0)
