@@ -169,7 +169,7 @@ func CalcStratSteps(ps map[string]*protocols.Protocol, strat []*types.MarketInfo
 	market := strat[0]
 	decimals := new(big.Int).Exp(big.NewInt(10), market.Decimals, nil)
 	initialUSDScaled := new(big.Int).Mul(initialUSD, decimals) // Add decimals
-	if market.PriceInUSD.Cmp(big.NewInt(0)) == 0 {             // If price is 0, assume 1
+	if market.PriceInUSD.Cmp(big.NewInt(0)) == 0 {
 		b, _ := json.MarshalIndent(market, "", "  ")
 		return big.NewInt(0), nil, fmt.Errorf("price is 0: %v", string(b)) // TODO: Remove this
 	}
