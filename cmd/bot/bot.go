@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"log"
@@ -10,7 +10,7 @@ import (
 	"yield-arb/cmd/utils"
 )
 
-func main() {
+func run() {
 	log.Println("Starting bot...")
 	startTime := time.Now()
 

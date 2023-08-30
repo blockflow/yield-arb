@@ -4,12 +4,15 @@ go 1.20
 
 require (
 	github.com/ethereum/go-ethereum v1.12.0
+	github.com/go-chi/chi v1.5.4
+	github.com/go-chi/render v1.0.3
 	github.com/joho/godotenv v1.5.1
 	golang.org/x/exp v0.0.0-20230206171751-46f607a40771
 )
 
 require (
 	github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6 // indirect
+	github.com/ajg/form v1.5.1 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.2.0 // indirect
 	github.com/deckarep/golang-set/v2 v2.1.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect

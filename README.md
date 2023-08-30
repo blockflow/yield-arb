@@ -1,6 +1,6 @@
 # yield-arb
 
-Lending and borrowing are separated by design to allow for deposit only protocols (ex. staking).
+Lending and borrowing are separated by design to allow for deposit only protocols (ex. staking). Uses chi framework for API.
 
 ## Ideas
 
