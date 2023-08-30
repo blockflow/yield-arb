@@ -16,6 +16,7 @@ type GetStratsInput struct {
 	BaseTokens       []string `json:"baseTokens"`
 	Chains           []string `json:"chains"`
 	Protocols        []string `json:"protocols"`
+	MaxLevels        int      `json:"maxLevels"`
 	InitialAmountUSD *big.Int `json:"initialAmountUSD"`
 	SafetyFactor     *big.Int `json:"safetyFactor"`
 }
@@ -49,7 +50,7 @@ func getStrats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Println("Calculating all strats...")
-	collateralStrats := arbitrage.GetAllStrats(pcs, 2)
+	collateralStrats := arbitrage.GetAllStrats(pcs, input.MaxLevels)
 
 	log.Println("Generating all steps...")
 	strats := make([][]*types.MarketInfo, 1)
