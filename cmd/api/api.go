@@ -13,6 +13,7 @@ func StartServer() {
 
 	r.Get("/", test)
 	r.Get("/strats", getStrats)
+	r.Get("/transactions", getTransactions)
 
 	http.ListenAndServe(":8080", r)
 }

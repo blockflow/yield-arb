@@ -10,6 +10,7 @@ import (
 	"yield-arb/cmd/protocols/compoundv3"
 	"yield-arb/cmd/protocols/schema"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/go-chi/render"
 )
 
@@ -97,6 +98,39 @@ func getStrats(w http.ResponseWriter, r *http.Request) {
 	arbitrage.SortStrategies(strategies)
 
 	res, err := json.Marshal(strategies)
+	if err != nil {
+		log.Panicf("failed to marshal strategies: %v", err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(res)
+}
+
+func getTransactions(w http.ResponseWriter, r *http.Request) {
+	var strat schema.Strategy
+	if err := render.Bind(r, &strat); err != nil {
+		log.Panicf("failed to bind input: %v", err)
+	}
+
+	var txs []*types.Transaction
+	ps := make(map[string]*protocols.Protocol)
+	for _, step := range strat.Steps {
+		p, ok := ps[step.Market.Protocol]
+		if !ok {
+			p, err := protocols.GetProtocol(step.Market.Protocol)
+			if err != nil {
+				log.Panicf("Failed to get protocol: %v", err)
+			}
+			ps[step.Market.Protocol] = &p
+		}
+		(*p).Connect(step.Market.Chain)
+		newTxs, err := (*p).GetTransactions("", step)
+		if err != nil {
+			log.Panicf("failed to get transactions: %v", err)
+		}
+		txs = append(txs, newTxs...)
+	}
+
+	res, err := json.Marshal(txs)
 	if err != nil {
 		log.Panicf("failed to marshal strategies: %v", err)
 	}
