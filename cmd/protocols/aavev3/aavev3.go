@@ -10,8 +10,10 @@ import (
 	"yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
 
-	t "yield-arb/cmd/protocols/types"
+	"yield-arb/cmd/protocols/schema"
+	t "yield-arb/cmd/protocols/schema"
 
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -519,13 +521,58 @@ func getOverallBorrowRate(
 // 	}
 // }
 
+func (a *AaveV3) GetTransactions(wallet string, step *schema.StrategyStep) ([]*types.Transaction, error) {
+	walletAddress := common.HexToAddress(wallet)
+
+	var txs []*types.Transaction
+	var txErr error
+	address, err := utils.ConvertSymbolToAddress(a.chain, step.Market.Token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert symbol: %v", err)
+	}
+	tokenAddress := common.HexToAddress(address)
+
+	poolABI, err := AaveV3PoolMetaData.GetAbi()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch pool abi: %v", err)
+	}
+
+	var data []byte
+	if step.IsSupply {
+		approvalTx, err := transactions.GetApprovalTxIfNeeded(a.cl, tokenAddress, walletAddress, a.poolAddress, step.Amount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get approval tx: %v", err)
+		}
+		txs = append(txs, approvalTx)
+
+		data, err = poolABI.Pack("deposit", tokenAddress, step.Amount, walletAddress, uint16(0))
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack deposit calldata: %v", err)
+		}
+	} else {
+		data, err = poolABI.Pack("borrow", tokenAddress, step.Amount, big.NewInt(2), uint16(0), walletAddress)
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack borrow calldata: %v", err)
+		}
+	}
+
+	tx := types.NewTx(&types.LegacyTx{
+		To:   &a.poolAddress,
+		Data: data,
+	})
+	txs = append(txs, tx)
+
+	if txErr != nil {
+		return nil, fmt.Errorf("failed to send supply tx: %v", txErr)
+	}
+
+	return txs, nil
+}
+
 // Deposits the specified token into the protocol
 func (a *AaveV3) Supply(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
 	walletAddress := common.HexToAddress(wallet)
-	auth, err := accounts.GetAuth(a.cl, a.chainID, walletAddress)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
-	}
+	auth := &bind.TransactOpts{From: walletAddress}
 
 	var tx *types.Transaction
 	var txErr error
@@ -557,13 +604,6 @@ func (a *AaveV3) Supply(wallet string, token string, amount *big.Int) (*types.Tr
 		return nil, fmt.Errorf("failed to send supply tx: %v", txErr)
 	}
 
-	// Wait
-	_, err = transactions.WaitForConfirmations(a.cl, tx, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
-	}
-
-	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, AaveV3Name, a.chain, tx.Hash())
 	return tx, nil
 }
 

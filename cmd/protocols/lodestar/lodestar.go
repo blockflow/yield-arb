@@ -10,7 +10,7 @@ import (
 	"yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
 
-	t "yield-arb/cmd/protocols/types"
+	t "yield-arb/cmd/protocols/schema"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"

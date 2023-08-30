@@ -6,7 +6,7 @@ import (
 	"time"
 	"yield-arb/cmd/arbitrage"
 	"yield-arb/cmd/protocols"
-	"yield-arb/cmd/protocols/types"
+	"yield-arb/cmd/protocols/schema"
 	"yield-arb/cmd/utils"
 )
 
@@ -21,7 +21,7 @@ func run() {
 	// var ApprovedCollateralTokens = []string{"USDC", "USDT", "ETH", "stETH"}
 
 	chains := []string{"base"}
-	var pcs []*types.ProtocolChain
+	var pcs []*schema.ProtocolChain
 	// ps := []string{"compoundv3"}
 	ps := []string{"aavev3", "compoundv3"}
 	// ps := []string{"aavev3", "compoundv3", "dforce", "lodestar"}
@@ -76,7 +76,7 @@ func run() {
 	log.Println("Generating all steps...")
 	initialAmountUSD := big.NewInt(1e8)
 	safety := big.NewInt(9000)
-	strats := make([][]*types.MarketInfo, 1)
+	strats := make([][]*schema.MarketInfo, 1)
 	// strats[0] = collateralStrats["ETH"][4]
 	for _, collateral := range ApprovedCollateralTokens {
 		collStrats, ok := collateralStrats[collateral]

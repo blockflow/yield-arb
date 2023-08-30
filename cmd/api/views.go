@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"yield-arb/cmd/arbitrage"
 	"yield-arb/cmd/protocols"
-	"yield-arb/cmd/protocols/types"
+	"yield-arb/cmd/protocols/compoundv3"
+	"yield-arb/cmd/protocols/schema"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/go-chi/render"
 )
 
@@ -25,13 +27,42 @@ func (i *GetStratsInput) Bind(r *http.Request) error {
 	return nil
 }
 
+func test(w http.ResponseWriter, r *http.Request) {
+	const protocol = "compoundv3"
+	const chain = "arbitrum"
+	const wallet = "0x18dC22D776aEFefD2538079409176086fcB6C741"
+	const token = "USDC"
+	// Test Supply()
+	p, _ := protocols.GetProtocol(protocol)
+	p.Connect(chain)
+	txs, err := p.GetTransactions(wallet, &schema.StrategyStep{
+		Market: &schema.MarketInfo{
+			Protocol: protocol,
+			Chain:    chain,
+			Token:    token,
+			Params:   &compoundv3.CompoundV3Params{},
+		},
+		IsSupply: true,
+		Amount:   big.NewInt(1e6),
+	})
+	if err != nil {
+		log.Printf("failed to supply: %v", err)
+	}
+	res, err := json.Marshal(txs)
+	if err != nil {
+		log.Panicf("failed to marshal strategies: %v", err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(res)
+}
+
 func getStrats(w http.ResponseWriter, r *http.Request) {
 	var input GetStratsInput
 	if err := render.Bind(r, &input); err != nil {
 		log.Panicf("failed to bind input: %v", err)
 	}
 
-	var pcs []*types.ProtocolChain
+	var pcs []*schema.ProtocolChain
 	psMap := make(map[string]*protocols.Protocol)
 	for _, protocol := range input.Protocols {
 		p, err := protocols.GetProtocol(protocol)
@@ -53,7 +84,7 @@ func getStrats(w http.ResponseWriter, r *http.Request) {
 	collateralStrats := arbitrage.GetAllStrats(pcs, input.MaxLevels)
 
 	log.Println("Generating all steps...")
-	strats := make([][]*types.MarketInfo, 1)
+	strats := make([][]*schema.MarketInfo, 1)
 	for _, baseToken := range input.BaseTokens {
 		baseStrats, ok := collateralStrats[baseToken]
 		if ok {
@@ -67,6 +98,39 @@ func getStrats(w http.ResponseWriter, r *http.Request) {
 	arbitrage.SortStrategies(strategies)
 
 	res, err := json.Marshal(strategies)
+	if err != nil {
+		log.Panicf("failed to marshal strategies: %v", err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(res)
+}
+
+func getTransactions(w http.ResponseWriter, r *http.Request) {
+	var strat schema.Strategy
+	if err := render.Bind(r, &strat); err != nil {
+		log.Panicf("failed to bind input: %v", err)
+	}
+
+	var txs []*types.Transaction
+	ps := make(map[string]*protocols.Protocol)
+	for _, step := range strat.Steps {
+		p, ok := ps[step.Market.Protocol]
+		if !ok {
+			p, err := protocols.GetProtocol(step.Market.Protocol)
+			if err != nil {
+				log.Panicf("Failed to get protocol: %v", err)
+			}
+			ps[step.Market.Protocol] = &p
+		}
+		(*p).Connect(step.Market.Chain)
+		newTxs, err := (*p).GetTransactions("", step)
+		if err != nil {
+			log.Panicf("failed to get transactions: %v", err)
+		}
+		txs = append(txs, newTxs...)
+	}
+
+	res, err := json.Marshal(txs)
 	if err != nil {
 		log.Panicf("failed to marshal strategies: %v", err)
 	}

@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"time"
 	"yield-arb/cmd/accounts"
-	t "yield-arb/cmd/protocols/types"
+	t "yield-arb/cmd/protocols/schema"
 	"yield-arb/cmd/transactions"
 	txs "yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"

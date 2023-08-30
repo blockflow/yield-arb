@@ -1,6 +1,9 @@
-package types
+package schema
 
-import "math/big"
+import (
+	"math/big"
+	"net/http"
+)
 
 type ProtocolChain struct {
 	Protocol      string        `json:"protocol"`
@@ -38,4 +41,8 @@ type StrategyStep struct {
 type Strategy struct {
 	Steps []*StrategyStep
 	APY   *big.Int
+}
+
+func (s *Strategy) Bind(r *http.Request) error {
+	return nil
 }
