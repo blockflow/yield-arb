@@ -7,7 +7,8 @@ import (
 	"math/big"
 	"time"
 	"yield-arb/cmd/accounts"
-	t "yield-arb/cmd/protocols/types"
+	"yield-arb/cmd/protocols/schema"
+	t "yield-arb/cmd/protocols/schema"
 	"yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
 
@@ -477,36 +478,53 @@ func (c *CompoundV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply boo
 }
 
 // Lends the token to the protocol
-func (c *CompoundV3) Supply(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	walletAddress := common.HexToAddress(wallet)
-	auth, err := accounts.GetAuth(c.cl, c.chainID, walletAddress)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve auth: %v", err)
+func (c *CompoundV3) GetTransactions(wallet string, step *schema.StrategyStep) ([]*types.Transaction, error) {
+	// Connect to comet
+	params := step.Market.Params.(*CompoundV3Params)
+	chainAsset := c.chain
+	if params.BaseAsset != "" {
+		chainAsset += ":" + params.BaseAsset
+	}
+	if err := c.connectComet(chainAsset); err != nil {
+		return nil, fmt.Errorf("failed to connect to comet: %v", err)
 	}
 
-	address, err := utils.ConvertSymbolToAddress(c.chain, token)
+	walletAddress := common.HexToAddress(wallet)
+	address, err := utils.ConvertSymbolToAddress(c.chain, step.Market.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert symbol to address: %v", err)
 	}
 	tokenAddress := common.HexToAddress(address)
-	// Handle approvals
-	_, err = transactions.ApproveERC20IfNeeded(c.cl, auth, tokenAddress, walletAddress, c.cometAddress, amount)
+
+	cometABI, err := CometMetaData.GetAbi()
 	if err != nil {
-		return nil, fmt.Errorf("failed to approve: %v", err)
-	}
-	tx, err := c.cometContract.Supply(auth, tokenAddress, amount)
-	if err != nil {
-		return nil, fmt.Errorf("failed to supply: %v", err)
+		return nil, fmt.Errorf("failed to get comet abi: %v", err)
 	}
 
-	// Wait
-	_, err = transactions.WaitForConfirmations(c.cl, tx, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to wait for tx to be mined: %v", err)
+	var txs []*types.Transaction
+	var method string
+	if step.IsSupply {
+		// Handle approvals
+		approvalTx, err := transactions.GetApprovalTxIfNeeded(c.cl, tokenAddress, walletAddress, c.cometAddress, step.Amount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get approval tx: %v", err)
+		}
+		txs = append(txs, approvalTx)
+		method = "supply"
+	} else {
+		method = "withdraw"
 	}
+	txData, err := cometABI.Pack(method, tokenAddress, step.Amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack withdraw calldata: %v", err)
+	}
+	tx := types.NewTx(&types.DynamicFeeTx{
+		To:   &c.cometAddress,
+		Data: txData,
+	})
+	txs = append(txs, tx)
 
-	log.Printf("Supplied %v %v to %v on %v (%v)", amount, token, CompoundV3Name, c.chain, tx.Hash())
-	return tx, nil
+	return txs, nil
 }
 
 // Withdraws the token from the protocol.
@@ -562,7 +580,8 @@ func (c *CompoundV3) Borrow(wallet string, token string, amount *big.Int) (*type
 // Repays the token to the protocol.
 // Note: CompoundV3 uses the supply function to repay base asset.
 func (c *CompoundV3) Repay(wallet string, token string, amount *big.Int) (*types.Transaction, error) {
-	return c.Supply(wallet, token, amount)
+	// return c.Supply(wallet, token, amount)
+	return nil, nil
 }
 
 func (c *CompoundV3) RepayAll(wallet string, token string) (*types.Transaction, error) {

@@ -6,7 +6,7 @@ import (
 	"log"
 	"math/big"
 	"yield-arb/cmd/protocols"
-	"yield-arb/cmd/protocols/types"
+	"yield-arb/cmd/protocols/schema"
 	"yield-arb/cmd/utils"
 
 	"golang.org/x/exp/slices"
@@ -93,9 +93,9 @@ import (
 //
 // Returns:
 //   - map[string][][]*t.MarketInfo: Map of collateral to list of strategies
-func GetAllStrats(pcs []*types.ProtocolChain, maxLevels int) map[string][][]*types.MarketInfo {
+func GetAllStrats(pcs []*schema.ProtocolChain, maxLevels int) map[string][][]*schema.MarketInfo {
 	// Mapping of base token to list of strategies
-	result := make(map[string][][]*types.MarketInfo)
+	result := make(map[string][][]*schema.MarketInfo)
 	// BFS
 	for level := 0; level < maxLevels; level++ {
 		for _, pc := range pcs {
@@ -103,7 +103,7 @@ func GetAllStrats(pcs []*types.ProtocolChain, maxLevels int) map[string][][]*typ
 			if level == 0 {
 				for _, supplyMarket := range pc.SupplyMarkets {
 					symbol := utils.CommonSymbol(supplyMarket.Token)
-					result[symbol] = append(result[symbol], []*types.MarketInfo{supplyMarket})
+					result[symbol] = append(result[symbol], []*schema.MarketInfo{supplyMarket})
 				}
 			} else {
 				// Add to existing strategies
@@ -125,7 +125,7 @@ func GetAllStrats(pcs []*types.ProtocolChain, maxLevels int) map[string][][]*typ
 								continue
 							}
 							// Add to the front of existing strategy
-							newStrat := make([]*types.MarketInfo, len(strategy)+2)
+							newStrat := make([]*schema.MarketInfo, len(strategy)+2)
 							newStrat[0] = supplyMarket
 							newStrat[1] = borrowMarket
 							copy(newStrat[2:], strategy)
@@ -152,7 +152,7 @@ func GetAllStrats(pcs []*types.ProtocolChain, maxLevels int) map[string][][]*typ
 //   - *big.Int: Total APY in ray
 //   - []*t.StrategyStep: List of steps to take
 //   - error: Error if any
-func CalcStratSteps(ps map[string]*protocols.Protocol, strat []*types.MarketInfo, initialUSD, safety *big.Int) (*big.Int, []*types.StrategyStep, error) {
+func CalcStratSteps(ps map[string]*protocols.Protocol, strat []*schema.MarketInfo, initialUSD, safety *big.Int) (*big.Int, []*schema.StrategyStep, error) {
 	if len(strat) == 0 { // Base case
 		return big.NewInt(0), nil, nil
 	}
@@ -163,7 +163,7 @@ func CalcStratSteps(ps map[string]*protocols.Protocol, strat []*types.MarketInfo
 
 	var totalAPY *big.Int
 	var nextLevelAPY *big.Int
-	var nextSteps []*types.StrategyStep
+	var nextSteps []*schema.StrategyStep
 
 	isSupply := len(strat)%2 == 1
 	market := strat[0]
@@ -229,8 +229,8 @@ func CalcStratSteps(ps map[string]*protocols.Protocol, strat []*types.MarketInfo
 
 		totalAPY = new(big.Int).Sub(nextLevelAPY, currentAPY)
 	}
-	totalSteps := make([]*types.StrategyStep, len(nextSteps)+1)
-	totalSteps[0] = &types.StrategyStep{
+	totalSteps := make([]*schema.StrategyStep, len(nextSteps)+1)
+	totalSteps[0] = &schema.StrategyStep{
 		Market:   market,
 		IsSupply: isSupply,
 		APY:      currentAPY,
@@ -251,14 +251,14 @@ func CalcStratSteps(ps map[string]*protocols.Protocol, strat []*types.MarketInfo
 // Returns:
 //   - []*t.Strategy: List of strategies with steps and total APYs
 //   - error: Error if any
-func CalcStrategies(ps map[string]*protocols.Protocol, strats [][]*types.MarketInfo, initialUSD, safety *big.Int) ([]*types.Strategy, error) {
-	result := make([]*types.Strategy, len(strats))
+func CalcStrategies(ps map[string]*protocols.Protocol, strats [][]*schema.MarketInfo, initialUSD, safety *big.Int) ([]*schema.Strategy, error) {
+	result := make([]*schema.Strategy, len(strats))
 	for i, strat := range strats {
 		totalAPY, steps, err := CalcStratSteps(ps, strat, initialUSD, safety)
 		if err != nil {
 			return nil, fmt.Errorf("failed to calc strat steps: %v", err)
 		}
-		result[i] = &types.Strategy{
+		result[i] = &schema.Strategy{
 			Steps: steps,
 			APY:   totalAPY,
 		}
@@ -268,11 +268,11 @@ func CalcStrategies(ps map[string]*protocols.Protocol, strats [][]*types.MarketI
 
 // Compares the two strategies' APYs.
 // Returns true if a is larger than b, false otherwise.
-func apyMore(a, b *types.Strategy) bool {
+func apyMore(a, b *schema.Strategy) bool {
 	return a.APY.Cmp(b.APY) == 1
 }
 
 // Sorts the strategies by APY in descending order.
-func SortStrategies(strats []*types.Strategy) {
-	slices.SortFunc[*types.Strategy](strats, apyMore)
+func SortStrategies(strats []*schema.Strategy) {
+	slices.SortFunc[*schema.Strategy](strats, apyMore)
 }

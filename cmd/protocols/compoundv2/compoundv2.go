@@ -10,7 +10,7 @@ package compoundv2
 // 	"runtime"
 // 	"strings"
 // 	"time"
-// 	t "yield-arb/cmd/protocols/types"
+// 	t "yield-arb/cmd/protocols/schema"
 // 	"yield-arb/cmd/utils"
 
 // 	"github.com/ethereum/go-ethereum/accounts/abi"

@@ -134,3 +134,39 @@ func ApproveERC20IfNeeded(cl *ethclient.Client, auth *bind.TransactOpts, token, 
 	}
 	return nil, nil
 }
+
+func GetApprovalTxIfNeeded(cl *ethclient.Client, token, owner, spender common.Address, amount *big.Int) (*types.Transaction, error) {
+	tokenContract, err := NewERC20Permit(token, cl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get token contract: %v", err)
+	}
+	tokenABI, err := ERC20PermitMetaData.GetAbi()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get token abi: %v", err)
+	}
+
+	// Get allowance
+	allowance, err := tokenContract.Allowance(nil, owner, spender)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get allowance: %v", err)
+	}
+
+	// Approve if needed
+	if allowance.Cmp(amount) == -1 {
+		data, err := tokenABI.Pack("approve", spender, amount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack approve: %v", err)
+		}
+		inner := &types.DynamicFeeTx{
+			To:   &token,
+			Data: data,
+		}
+		tx := types.NewTx(inner)
+		// tx, err := tokenContract.Approve(&bind.TransactOpts{From: owner}, spender, utils.MaxUint64)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("failed to approve: %v", err)
+		// }
+		return tx, nil
+	}
+	return nil, nil
+}

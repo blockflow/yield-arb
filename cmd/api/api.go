@@ -11,7 +11,8 @@ func StartServer() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 
-	r.Get("/", getStrats)
+	r.Get("/", test)
+	r.Get("/strats", getStrats)
 
 	http.ListenAndServe(":8080", r)
 }
