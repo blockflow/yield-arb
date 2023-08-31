@@ -5,6 +5,8 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"strconv"
+	"strings"
 	"yield-arb/cmd/arbitrage"
 	"yield-arb/cmd/protocols"
 	"yield-arb/cmd/protocols/compoundv3"
@@ -57,20 +59,22 @@ func test(w http.ResponseWriter, r *http.Request) {
 }
 
 func getStrats(w http.ResponseWriter, r *http.Request) {
-	var input GetStratsInput
-	if err := render.Bind(r, &input); err != nil {
-		log.Panicf("failed to bind input: %v", err)
-	}
+	ps := strings.Split(r.URL.Query().Get("protocols"), ",")
+	chains := strings.Split(r.URL.Query().Get("chains"), ",")
+	baseTokens := strings.Split(r.URL.Query().Get("baseTokens"), ",")
+	maxLevels, _ := strconv.Atoi(r.URL.Query().Get("maxLevels"))
+	initialAmountUSD, _ := new(big.Int).SetString(r.URL.Query().Get("initialAmountUSD"), 10)
+	safetyFactor, _ := new(big.Int).SetString(r.URL.Query().Get("safetyFactor"), 10)
 
 	var pcs []*schema.ProtocolChain
 	psMap := make(map[string]*protocols.Protocol)
-	for _, protocol := range input.Protocols {
+	for _, protocol := range ps {
 		p, err := protocols.GetProtocol(protocol)
 		if err != nil {
 			log.Panicf("Failed to get protocol: %v", err)
 		}
 		psMap[protocol] = &p
-		for _, chain := range input.Chains {
+		for _, chain := range chains {
 			p.Connect(chain)
 			pms, err := p.GetMarkets()
 			if err != nil {
@@ -81,17 +85,17 @@ func getStrats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Println("Calculating all strats...")
-	collateralStrats := arbitrage.GetAllStrats(pcs, input.MaxLevels)
+	collateralStrats := arbitrage.GetAllStrats(pcs, maxLevels)
 
 	log.Println("Generating all steps...")
-	strats := make([][]*schema.MarketInfo, 1)
-	for _, baseToken := range input.BaseTokens {
+	strats := make([][]*schema.MarketInfo, 0)
+	for _, baseToken := range baseTokens {
 		baseStrats, ok := collateralStrats[baseToken]
 		if ok {
 			strats = append(strats, baseStrats...)
 		}
 	}
-	strategies, err := arbitrage.CalcStrategies(psMap, strats, input.InitialAmountUSD, input.SafetyFactor)
+	strategies, err := arbitrage.CalcStrategies(psMap, strats, initialAmountUSD, safetyFactor)
 	if err != nil {
 		log.Panicf("failed to calc strategies: %v", err)
 	}

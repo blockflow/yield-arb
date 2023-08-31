@@ -13,13 +13,13 @@ type ProtocolChain struct {
 }
 
 type MarketInfo struct {
-	Protocol   string `json:"protocol"`
-	Chain      string `json:"chain"`
-	Token      string `json:"token"`
-	Decimals   *big.Int
-	LTV        *big.Int    // In basis points, 0 if cannot be collateral
-	PriceInUSD *big.Int    // How much USD is required to purchase 1 ether unit, with 8 decimals
-	Params     interface{} // State of the market, e.g. total supplied, total borrowed, etc. Cannot be a pointer.
+	Protocol   string      `json:"protocol"`
+	Chain      string      `json:"chain"`
+	Token      string      `json:"token"`
+	Decimals   *big.Int    `json:"decimals"`
+	LTV        *big.Int    `json:"ltv"`        // In basis points, 0 if cannot be collateral
+	PriceInUSD *big.Int    `json:"priceInUSD"` // How much USD is required to purchase 1 ether unit, with 8 decimals
+	Params     interface{} `json:"params"`     // State of the market, e.g. total supplied, total borrowed, etc. Cannot be a pointer.
 }
 
 type AccountData struct {
@@ -32,15 +32,15 @@ type AccountData struct {
 }
 
 type StrategyStep struct {
-	Market   *MarketInfo
-	IsSupply bool
-	APY      *big.Int
-	Amount   *big.Int
+	Market   *MarketInfo `json:"market"`
+	IsSupply bool        `json:"isSupply"`
+	APY      *big.Int    `json:"apy"`
+	Amount   *big.Int    `json:"amount"`
 }
 
 type Strategy struct {
-	Steps []*StrategyStep
-	APY   *big.Int
+	Steps []*StrategyStep `json:"steps"`
+	APY   *big.Int        `json:"apy"`
 }
 
 func (s *Strategy) Bind(r *http.Request) error {

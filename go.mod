@@ -7,6 +7,7 @@ require (
 	github.com/go-chi/chi v1.5.4
 	github.com/go-chi/render v1.0.3
 	github.com/joho/godotenv v1.5.1
+	github.com/rs/cors v1.7.0
 	golang.org/x/exp v0.0.0-20230206171751-46f607a40771
 )
 
