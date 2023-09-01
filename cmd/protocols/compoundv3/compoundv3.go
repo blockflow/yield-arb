@@ -80,6 +80,12 @@ var compv3ConfigAddresses = map[string]string{
 	"base":            "0x45939657d1CA34A8FA39A924B71D28Fe8431e581",
 }
 
+var gasLimit = map[string]uint64{
+	"ethereum": 200000,
+	"arbitrum": 1500000,
+	"base":     200000,
+}
+
 // TODO: This might not be comprehensive
 var decimals = map[string]uint8{
 	"ETH":    18,
@@ -481,7 +487,7 @@ func (c *CompoundV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply boo
 func (c *CompoundV3) GetTransactions(wallet string, step *schema.StrategyStep) ([]*types.Transaction, error) {
 	// Connect to comet
 	params := step.Market.Params.(*CompoundV3Params)
-	chainAsset := c.chain
+	chainAsset := step.Market.Chain
 	if params.BaseAsset != "" {
 		chainAsset += ":" + params.BaseAsset
 	}
@@ -490,7 +496,7 @@ func (c *CompoundV3) GetTransactions(wallet string, step *schema.StrategyStep) (
 	}
 
 	walletAddress := common.HexToAddress(wallet)
-	address, err := utils.ConvertSymbolToAddress(c.chain, step.Market.Token)
+	address, err := utils.ConvertSymbolToAddress(step.Market.Chain, step.Market.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert symbol to address: %v", err)
 	}
@@ -521,6 +527,7 @@ func (c *CompoundV3) GetTransactions(wallet string, step *schema.StrategyStep) (
 	tx := types.NewTx(&types.DynamicFeeTx{
 		To:   &c.cometAddress,
 		Data: txData,
+		Gas:  gasLimit[step.Market.Chain],
 	})
 	txs = append(txs, tx)
 
