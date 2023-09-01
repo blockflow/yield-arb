@@ -72,6 +72,12 @@ type ReserveData struct {
 
 const AaveV3Name = "aavev3"
 
+var gasLimit = map[string]uint64{
+	"ethereum": uint64(300000),
+	"arbitrum": uint64(500000),
+	"base":     uint64(300000),
+}
+
 var aavev3AddressesProviders = map[string]string{
 	"ethereum":  "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e",
 	"polygon":   "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
@@ -526,7 +532,7 @@ func (a *AaveV3) GetTransactions(wallet string, step *schema.StrategyStep) ([]*t
 
 	var txs []*types.Transaction
 	var txErr error
-	address, err := utils.ConvertSymbolToAddress(a.chain, step.Market.Token)
+	address, err := utils.ConvertSymbolToAddress(step.Market.Chain, step.Market.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert symbol: %v", err)
 	}
@@ -545,7 +551,7 @@ func (a *AaveV3) GetTransactions(wallet string, step *schema.StrategyStep) ([]*t
 		}
 		txs = append(txs, approvalTx)
 
-		data, err = poolABI.Pack("deposit", tokenAddress, step.Amount, walletAddress, uint16(0))
+		data, err = poolABI.Pack("supply", tokenAddress, step.Amount, walletAddress, uint16(0))
 		if err != nil {
 			return nil, fmt.Errorf("failed to pack deposit calldata: %v", err)
 		}
@@ -555,10 +561,14 @@ func (a *AaveV3) GetTransactions(wallet string, step *schema.StrategyStep) ([]*t
 			return nil, fmt.Errorf("failed to pack borrow calldata: %v", err)
 		}
 	}
-
-	tx := types.NewTx(&types.LegacyTx{
+	gas := gasLimit[step.Market.Chain]
+	if !step.IsSupply {
+		gas *= 2
+	}
+	tx := types.NewTx(&types.DynamicFeeTx{
 		To:   &a.poolAddress,
 		Data: data,
+		Gas:  gas,
 	})
 	txs = append(txs, tx)
 
