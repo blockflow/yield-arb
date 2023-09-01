@@ -545,7 +545,7 @@ func (a *AaveV3) GetTransactions(wallet string, step *schema.StrategyStep) ([]*t
 
 	var data []byte
 	if step.IsSupply {
-		approvalTx, err := transactions.GetApprovalTxIfNeeded(a.cl, tokenAddress, walletAddress, a.poolAddress, step.Amount)
+		approvalTx, err := transactions.GetApprovalTxIfNeeded(a.cl, step.Market.Chain, tokenAddress, walletAddress, a.poolAddress, step.Amount)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get approval tx: %v", err)
 		}

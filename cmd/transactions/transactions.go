@@ -17,6 +17,12 @@ import (
 
 var MulticallAddress = common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11")
 
+var approveGasLimits = map[string]uint64{
+	"ethereum": 50000,
+	"arbitrum": 500000,
+	"base":     40000,
+}
+
 // TODO: Estimate gas price dynamically
 // Fetches tx params and builds the tx.
 func BuildTransaction(e *ethclient.Client, from, to common.Address, amount *big.Int, data []byte) (*types.Transaction, error) {
@@ -135,7 +141,7 @@ func ApproveERC20IfNeeded(cl *ethclient.Client, auth *bind.TransactOpts, token, 
 	return nil, nil
 }
 
-func GetApprovalTxIfNeeded(cl *ethclient.Client, token, owner, spender common.Address, amount *big.Int) (*types.Transaction, error) {
+func GetApprovalTxIfNeeded(cl *ethclient.Client, chain string, token, owner, spender common.Address, amount *big.Int) (*types.Transaction, error) {
 	tokenContract, err := NewERC20Permit(token, cl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token contract: %v", err)
@@ -160,12 +166,9 @@ func GetApprovalTxIfNeeded(cl *ethclient.Client, token, owner, spender common.Ad
 		inner := &types.DynamicFeeTx{
 			To:   &token,
 			Data: data,
+			Gas:  approveGasLimits[chain],
 		}
 		tx := types.NewTx(inner)
-		// tx, err := tokenContract.Approve(&bind.TransactOpts{From: owner}, spender, utils.MaxUint64)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("failed to approve: %v", err)
-		// }
 		return tx, nil
 	}
 	return nil, nil

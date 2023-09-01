@@ -116,18 +116,19 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var txs []*types.Transaction
-	ps := make(map[string]*protocols.Protocol)
+	ps := make(map[string]protocols.Protocol)
 	for _, step := range strat.Steps {
 		p, ok := ps[step.Market.Protocol]
 		if !ok {
-			p, err := protocols.GetProtocol(step.Market.Protocol)
+			var err error
+			p, err = protocols.GetProtocol(step.Market.Protocol)
 			if err != nil {
 				log.Panicf("Failed to get protocol: %v", err)
 			}
-			ps[step.Market.Protocol] = &p
+			ps[step.Market.Protocol] = p
 		}
-		(*p).Connect(step.Market.Chain)
-		newTxs, err := (*p).GetTransactions("", step)
+		p.Connect(step.Market.Chain)
+		newTxs, err := p.GetTransactions("", step)
 		if err != nil {
 			log.Panicf("failed to get transactions: %v", err)
 		}

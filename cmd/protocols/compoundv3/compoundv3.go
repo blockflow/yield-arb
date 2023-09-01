@@ -511,7 +511,7 @@ func (c *CompoundV3) GetTransactions(wallet string, step *schema.StrategyStep) (
 	var method string
 	if step.IsSupply {
 		// Handle approvals
-		approvalTx, err := transactions.GetApprovalTxIfNeeded(c.cl, tokenAddress, walletAddress, c.cometAddress, step.Amount)
+		approvalTx, err := transactions.GetApprovalTxIfNeeded(c.cl, step.Market.Chain, tokenAddress, walletAddress, c.cometAddress, step.Amount)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get approval tx: %v", err)
 		}
