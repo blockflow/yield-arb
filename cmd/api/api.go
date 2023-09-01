@@ -25,7 +25,7 @@ func StartServer() {
 
 	r.Get("/", test)
 	r.Get("/strats", getStrats)
-	r.Get("/transactions", getTransactions)
+	r.Post("/transactions", getTransactions)
 
 	http.ListenAndServe(":8080", r)
 }
