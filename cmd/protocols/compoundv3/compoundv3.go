@@ -8,7 +8,6 @@ import (
 	"time"
 	"yield-arb/cmd/accounts"
 	"yield-arb/cmd/protocols/schema"
-	t "yield-arb/cmd/protocols/schema"
 	"yield-arb/cmd/transactions"
 	"yield-arb/cmd/utils"
 
@@ -25,20 +24,6 @@ type CompoundV3 struct {
 	configContract *Configurator
 	cometAddress   common.Address
 	cometContract  *Comet
-}
-
-type CompoundV3Params struct {
-	// Base asset, compv3 supports multiple base assets
-	BaseAsset string
-
-	SupplyCapRemaining *big.Int
-	TotalSupply        *big.Int
-	TotalBorrows       *big.Int
-	// Constants
-	Base      *big.Int
-	SlopeLow  *big.Int
-	Kink      *big.Int
-	SlopeHigh *big.Int
 }
 
 type CompoundV3Stats struct {
@@ -294,7 +279,7 @@ func (c *CompoundV3) connectComet(chainAsset string) error {
 }
 
 // Returns the markets for the protocol
-func (c *CompoundV3) GetMarkets() ([]*t.ProtocolChain, error) {
+func (c *CompoundV3) GetMarkets() ([]*schema.ProtocolChain, error) {
 	log.Printf("Fetching market data for %v...", c.chain)
 	startTime := time.Now()
 
@@ -309,7 +294,7 @@ func (c *CompoundV3) GetMarkets() ([]*t.ProtocolChain, error) {
 		chainAssets = []string{c.chain}
 	}
 
-	protocolChains := make([]*t.ProtocolChain, len(chainAssets))
+	protocolChains := make([]*schema.ProtocolChain, len(chainAssets))
 	for i, chainAsset := range chainAssets {
 		// Connect to comet
 		if err := c.connectComet(chainAsset); err != nil {
@@ -343,7 +328,7 @@ func (c *CompoundV3) GetMarkets() ([]*t.ProtocolChain, error) {
 		}
 
 		// Fill in LTV and APY for collateral tokens
-		supplyMarkets := make([]*t.MarketInfo, numAssets+1)
+		supplyMarkets := make([]*schema.MarketInfo, numAssets+1)
 		for i, assetInfo := range config.AssetConfigs {
 			symbol, err := utils.ConvertAddressToSymbol(c.chain, assetInfo.Asset.Hex())
 			if err != nil {
@@ -353,17 +338,23 @@ func (c *CompoundV3) GetMarkets() ([]*t.ProtocolChain, error) {
 			ltv := big.NewInt(int64(assetInfo.BorrowCollateralFactor))
 			ltv.Quo(ltv, big.NewInt(1e14))
 			supplyCap := new(big.Int).Sub(assetInfo.SupplyCap, amountsSupplied[i])
-			supplyMarkets[i] = &t.MarketInfo{
+			supplyMarkets[i] = &schema.MarketInfo{
 				Protocol:   CompoundV3Name,
 				Chain:      c.chain,
 				Token:      symbol,
 				Decimals:   big.NewInt(int64(assetInfo.Decimals)),
 				LTV:        ltv,
 				PriceInUSD: prices[i],
-				Params: &CompoundV3Params{
-					BaseAsset:          chainAsset,
-					SupplyCapRemaining: supplyCap,
-					TotalSupply:        amountsSupplied[i],
+				Params: map[string]interface{}{
+					"baseAsset":          chainAsset,
+					"supplyCapRemaining": supplyCap,
+					"totalSupply":        amountsSupplied[i],
+					"totalBorrows":       big.NewInt(0),
+
+					"base":      big.NewInt(0),
+					"slopeLow":  big.NewInt(0),
+					"kink":      big.NewInt(0),
+					"slopeHigh": big.NewInt(0),
 				},
 			}
 		}
@@ -378,47 +369,47 @@ func (c *CompoundV3) GetMarkets() ([]*t.ProtocolChain, error) {
 			return nil, fmt.Errorf("failed to get base aprs: %v", err)
 		}
 		decimals := decimals[symbol]
-		market := &t.MarketInfo{
+		market := &schema.MarketInfo{
 			Protocol:   CompoundV3Name,
 			Chain:      c.chain,
 			Token:      symbol,
 			Decimals:   big.NewInt(int64(decimals)),
 			LTV:        big.NewInt(0),
 			PriceInUSD: prices[numAssets],
-			Params: &CompoundV3Params{
-				BaseAsset:          chainAsset,
-				SupplyCapRemaining: utils.MaxUint256,
-				TotalSupply:        baseStats.TotalSupply,
-				TotalBorrows:       baseStats.TotalBorrows,
+			Params: map[string]interface{}{
+				"baseAsset":          chainAsset,
+				"supplyCapRemaining": utils.MaxUint256,
+				"totalSupply":        baseStats.TotalSupply,
+				"totalBorrows":       baseStats.TotalBorrows,
 
-				Base:      baseStats.SupplyBase,
-				SlopeLow:  baseStats.SupplySlopeLow,
-				Kink:      big.NewInt(int64(config.SupplyKink)),
-				SlopeHigh: baseStats.SupplySlodeHigh,
+				"base":      baseStats.SupplyBase,
+				"slopeLow":  baseStats.SupplySlopeLow,
+				"kink":      big.NewInt(int64(config.SupplyKink)),
+				"slopeHigh": baseStats.SupplySlodeHigh,
 			},
 		}
 		supplyMarkets[numAssets] = market
-		borrowMarkets := []*t.MarketInfo{{
+		borrowMarkets := []*schema.MarketInfo{{
 			Protocol:   CompoundV3Name,
 			Chain:      c.chain,
 			Token:      symbol,
 			Decimals:   big.NewInt(int64(decimals)),
 			LTV:        big.NewInt(0),
 			PriceInUSD: prices[numAssets],
-			Params: &CompoundV3Params{
-				BaseAsset:          chainAsset,
-				SupplyCapRemaining: utils.MaxUint256,
-				TotalSupply:        baseStats.TotalSupply,
-				TotalBorrows:       baseStats.TotalBorrows,
+			Params: map[string]interface{}{
+				"baseAsset":          chainAsset,
+				"supplyCapRemaining": utils.MaxUint256,
+				"totalSupply":        baseStats.TotalSupply,
+				"totalBorrows":       baseStats.TotalBorrows,
 
-				Base:      baseStats.BorrowBase,
-				SlopeLow:  baseStats.BorrowSlopeLow,
-				Kink:      big.NewInt(int64(config.BorrowKink)),
-				SlopeHigh: baseStats.BorrowSlopeHigh,
+				"base":      baseStats.BorrowBase,
+				"slopeLow":  baseStats.BorrowSlopeLow,
+				"kink":      big.NewInt(int64(config.BorrowKink)),
+				"slopeHigh": baseStats.BorrowSlopeHigh,
 			}}}
 
 		log.Printf("Fetched %v lending tokens & %v borrowing tokens", len(supplyMarkets), len(borrowMarkets))
-		protocolChains[i] = &t.ProtocolChain{
+		protocolChains[i] = &schema.ProtocolChain{
 			Protocol:      CompoundV3Name,
 			Chain:         c.chain,
 			SupplyMarkets: supplyMarkets,
@@ -431,21 +422,25 @@ func (c *CompoundV3) GetMarkets() ([]*t.ProtocolChain, error) {
 	return protocolChains, nil
 }
 
-func (c *CompoundV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*big.Int, *big.Int, error) {
-	params, ok := market.Params.(*CompoundV3Params)
-	if !ok {
-		return nil, nil, fmt.Errorf("failed to cast params to CompoundV3Params")
-	}
+func (c *CompoundV3) CalcAPY(m *schema.MarketInfo, amount *big.Int, isSupply bool) (*big.Int, *big.Int, error) {
+	supplyCapRemaining := m.Params["supplyCapRemaining"].(*big.Int)
+	totalSupply := m.Params["totalSupply"].(*big.Int)
+	totalBorrows := m.Params["totalBorrows"].(*big.Int)
+
+	base := m.Params["base"].(*big.Int)
+	slopeLow := m.Params["slopeLow"].(*big.Int)
+	kink := m.Params["kink"].(*big.Int)
+	slopeHigh := m.Params["slopeHigh"].(*big.Int)
 
 	// If TotalBorrows is nil, 0 APY
-	if params.TotalBorrows == nil {
+	if m.Params["totalBorrows"].(*big.Int) == nil {
 		return big.NewInt(0), amount, nil
 	}
 
 	var actualAmount *big.Int
-	availableLiquidity := new(big.Int).Sub(params.TotalSupply, params.TotalBorrows)
-	if isSupply && amount.Cmp(params.SupplyCapRemaining) == 1 {
-		actualAmount = new(big.Int).Set(params.SupplyCapRemaining)
+	availableLiquidity := new(big.Int).Sub(totalSupply, totalBorrows)
+	if isSupply && amount.Cmp(supplyCapRemaining) == 1 {
+		actualAmount = new(big.Int).Set(supplyCapRemaining)
 	} else if !isSupply && amount.Cmp(availableLiquidity) == 1 {
 		actualAmount = new(big.Int).Set(availableLiquidity)
 	} else {
@@ -453,13 +448,13 @@ func (c *CompoundV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply boo
 	}
 
 	// If not base market (totalBorrows is nil), 0 APY
-	if params.TotalBorrows == nil {
+	if totalBorrows == nil {
 		return big.NewInt(0), actualAmount, nil
 	}
 
 	// Calc utilization
-	supply := params.TotalSupply
-	borrows := params.TotalBorrows
+	supply := totalSupply
+	borrows := totalBorrows
 	if isSupply {
 		supply = new(big.Int).Add(supply, actualAmount)
 	} else {
@@ -469,11 +464,11 @@ func (c *CompoundV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply boo
 
 	// Calculate rate per second
 	var ratePerSecond *big.Int
-	if utilization.Cmp(params.Kink) < 1 {
-		ratePerSecond = new(big.Int).Add(params.Base, utils.ManMul(params.SlopeLow, utilization))
+	if utilization.Cmp(kink) < 1 {
+		ratePerSecond = new(big.Int).Add(base, utils.ManMul(slopeLow, utilization))
 	} else {
-		ratePerSecond = new(big.Int).Add(params.Base, utils.ManMul(params.SlopeHigh, params.Kink))
-		ratePerSecond.Add(ratePerSecond, utils.ManMul(params.SlopeHigh, new(big.Int).Sub(utilization, params.Kink)))
+		ratePerSecond = new(big.Int).Add(base, utils.ManMul(slopeHigh, kink))
+		ratePerSecond.Add(ratePerSecond, utils.ManMul(slopeHigh, new(big.Int).Sub(utilization, kink)))
 	}
 
 	// Calculate APY
@@ -485,11 +480,13 @@ func (c *CompoundV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply boo
 
 // Lends the token to the protocol
 func (c *CompoundV3) GetTransactions(wallet string, step *schema.StrategyStep) ([]*types.Transaction, error) {
+	m := step.Market
+	baseAsset := m.Params["baseAsset"].(string)
+
 	// Connect to comet
-	params := step.Market.Params.(*CompoundV3Params)
 	chainAsset := step.Market.Chain
-	if params.BaseAsset != "" {
-		chainAsset += ":" + params.BaseAsset
+	if baseAsset != "" {
+		chainAsset += ":" + baseAsset
 	}
 	if err := c.connectComet(chainAsset); err != nil {
 		return nil, fmt.Errorf("failed to connect to comet: %v", err)

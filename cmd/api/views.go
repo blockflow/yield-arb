@@ -9,7 +9,6 @@ import (
 	"strings"
 	"yield-arb/cmd/arbitrage"
 	"yield-arb/cmd/protocols"
-	"yield-arb/cmd/protocols/compoundv3"
 	"yield-arb/cmd/protocols/schema"
 
 	"github.com/ethereum/go-ethereum/core/types"
@@ -42,7 +41,7 @@ func test(w http.ResponseWriter, r *http.Request) {
 			Protocol: protocol,
 			Chain:    chain,
 			Token:    token,
-			Params:   &compoundv3.CompoundV3Params{},
+			Params:   map[string]interface{}{},
 		},
 		IsSupply: true,
 		Amount:   big.NewInt(1e6),
@@ -110,29 +109,31 @@ func getStrats(w http.ResponseWriter, r *http.Request) {
 }
 
 func getTransactions(w http.ResponseWriter, r *http.Request) {
-	var strat schema.Strategy
-	if err := render.Bind(r, &strat); err != nil {
+	var strats schema.Strategies
+	if err := render.Bind(r, &strats); err != nil {
 		log.Panicf("failed to bind input: %v", err)
 	}
 
-	var txs []*types.Transaction
+	txs := make([][]*types.Transaction, len(strats.Strategies))
 	ps := make(map[string]protocols.Protocol)
-	for _, step := range strat.Steps {
-		p, ok := ps[step.Market.Protocol]
-		if !ok {
-			var err error
-			p, err = protocols.GetProtocol(step.Market.Protocol)
-			if err != nil {
-				log.Panicf("Failed to get protocol: %v", err)
+	for i, strat := range strats.Strategies {
+		for _, step := range strat.Steps {
+			p, ok := ps[step.Market.Protocol]
+			if !ok {
+				var err error
+				p, err = protocols.GetProtocol(step.Market.Protocol)
+				if err != nil {
+					log.Panicf("Failed to get protocol: %v", err)
+				}
+				ps[step.Market.Protocol] = p
 			}
-			ps[step.Market.Protocol] = p
+			p.Connect(step.Market.Chain)
+			newTxs, err := p.GetTransactions("", step)
+			if err != nil {
+				log.Panicf("failed to get transactions: %v", err)
+			}
+			txs[i] = append(txs[i], newTxs...)
 		}
-		p.Connect(step.Market.Chain)
-		newTxs, err := p.GetTransactions("", step)
-		if err != nil {
-			log.Panicf("failed to get transactions: %v", err)
-		}
-		txs = append(txs, newTxs...)
 	}
 
 	res, err := json.Marshal(txs)

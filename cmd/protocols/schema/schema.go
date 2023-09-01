@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"log"
 	"math/big"
 	"net/http"
 )
@@ -14,13 +15,13 @@ type ProtocolChain struct {
 }
 
 type MarketInfo struct {
-	Protocol   string      `json:"protocol"`
-	Chain      string      `json:"chain"`
-	Token      string      `json:"token"`
-	Decimals   *big.Int    `json:"decimals"`
-	LTV        *big.Int    `json:"ltv"`        // In basis points, 0 if cannot be collateral
-	PriceInUSD *big.Int    `json:"priceInUSD"` // How much USD is required to purchase 1 ether unit, with 8 decimals
-	Params     interface{} `json:"params"`     // State of the market, e.g. total supplied, total borrowed, etc. Cannot be a pointer.
+	Protocol   string                 `json:"protocol"`
+	Chain      string                 `json:"chain"`
+	Token      string                 `json:"token"`
+	Decimals   *big.Int               `json:"decimals"`
+	LTV        *big.Int               `json:"ltv"`        // In basis points, 0 if cannot be collateral
+	PriceInUSD *big.Int               `json:"priceInUSD"` // How much USD is required to purchase 1 ether unit, with 8 decimals
+	Params     map[string]interface{} `json:"params"`     // State of the market, e.g. total supplied, total borrowed, etc. Cannot be a pointer.
 }
 
 type AccountData struct {
@@ -44,19 +45,28 @@ type Strategy struct {
 	APY   *big.Int        `json:"apy"`
 }
 
+type Strategies struct {
+	Strategies []*Strategy `json:"strategies"`
+}
+
 func (s *Strategy) Bind(r *http.Request) error {
+	return nil
+}
+
+func (s *Strategies) Bind(r *http.Request) error {
 	return nil
 }
 
 // Leaves out the Params field
 func (m *MarketInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Protocol   string `json:"protocol"`
-		Chain      string `json:"chain"`
-		Token      string `json:"token"`
-		Decimals   string `json:"decimals"`
-		LTV        string `json:"ltv"`        // In basis points, 0 if cannot be collateral
-		PriceInUSD string `json:"priceInUSD"` // How much USD is required to purchase 1 ether unit, with 8 decimals
+		Protocol   string      `json:"protocol"`
+		Chain      string      `json:"chain"`
+		Token      string      `json:"token"`
+		Decimals   string      `json:"decimals"`
+		LTV        string      `json:"ltv"`        // In basis points, 0 if cannot be collateral
+		PriceInUSD string      `json:"priceInUSD"` // How much USD is required to purchase 1 ether unit, with 8 decimals
+		Params     interface{} `json:"params"`     // State of the market, e.g. total supplied, total borrowed, etc. Cannot be a pointer.
 	}{
 		Protocol:   m.Protocol,
 		Chain:      m.Chain,
@@ -64,18 +74,20 @@ func (m *MarketInfo) MarshalJSON() ([]byte, error) {
 		Decimals:   m.Decimals.String(),
 		LTV:        m.LTV.String(),
 		PriceInUSD: m.PriceInUSD.String(),
+		Params:     m.Params,
 	})
 }
 
 func (m *MarketInfo) UnmarshalJSON(data []byte) error {
 	// Declare an anonymous struct with BigNum as string
 	var temp struct {
-		Protocol   string `json:"protocol"`
-		Chain      string `json:"chain"`
-		Token      string `json:"token"`
-		Decimals   string `json:"decimals"`
-		LTV        string `json:"ltv"`        // In basis points, 0 if cannot be collateral
-		PriceInUSD string `json:"priceInUSD"` // How much USD is required to purchase 1 ether unit, with 8 decimals
+		Protocol   string                 `json:"protocol"`
+		Chain      string                 `json:"chain"`
+		Token      string                 `json:"token"`
+		Decimals   string                 `json:"decimals"`
+		LTV        string                 `json:"ltv"`        // In basis points, 0 if cannot be collateral
+		PriceInUSD string                 `json:"priceInUSD"` // How much USD is required to purchase 1 ether unit, with 8 decimals
+		Params     map[string]interface{} `json:"params"`     // State of the market, e.g. total supplied, total borrowed, etc. Cannot be a pointer.
 	}
 
 	// Unmarshal the json bytes into the temp struct
@@ -87,6 +99,10 @@ func (m *MarketInfo) UnmarshalJSON(data []byte) error {
 	m.Protocol = temp.Protocol
 	m.Chain = temp.Chain
 	m.Token = temp.Token
+	m.Params = temp.Params
+
+	b, _ := json.MarshalIndent(temp.Params, "", "  ")
+	log.Print(string(b))
 
 	// Convert string to big.Int
 	m.Decimals = new(big.Int)

@@ -11,7 +11,6 @@ import (
 	"yield-arb/cmd/utils"
 
 	"yield-arb/cmd/protocols/schema"
-	t "yield-arb/cmd/protocols/schema"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -32,28 +31,28 @@ type AaveV3 struct {
 	wethGatewayTransactor    *WETHGatewayTransactor
 }
 
-type AaveV3MarketParams struct {
-	// Self calculated
-	SupplyCapRemaining *big.Int
-	TotalVariableDebt  *big.Int
-	TotalStableDebt    *big.Int
+// type AaveV3MarketParams struct {
+// 	// Self calculated
+// 	SupplyCapRemaining *big.Int
+// 	TotalVariableDebt  *big.Int
+// 	TotalStableDebt    *big.Int
 
-	ReserveFactor          *big.Int
-	AvailableLiquidity     *big.Int
-	AverageStableRate      *big.Int
-	StableRateSlope1       *big.Int
-	StableRateSlope2       *big.Int
-	VariableRateSlope1     *big.Int
-	VariableRateSlope2     *big.Int
-	BaseStableBorrowRate   *big.Int
-	BaseVariableBorrowRate *big.Int
-	OptimalRatio           *big.Int
-	Unbacked               *big.Int
+// 	ReserveFactor          *big.Int
+// 	AvailableLiquidity     *big.Int
+// 	AverageStableRate      *big.Int
+// 	StableRateSlope1       *big.Int
+// 	StableRateSlope2       *big.Int
+// 	VariableRateSlope1     *big.Int
+// 	VariableRateSlope2     *big.Int
+// 	BaseStableBorrowRate   *big.Int
+// 	BaseVariableBorrowRate *big.Int
+// 	OptimalRatio           *big.Int
+// 	Unbacked               *big.Int
 
-	// Constants not provided by UIPoolDataProvider
-	OptimalStableToTotalDebtRatio *big.Int
-	StableRateExcessOffset        *big.Int
-}
+// 	// Constants not provided by UIPoolDataProvider
+// 	OptimalStableToTotalDebtRatio *big.Int
+// 	StableRateExcessOffset        *big.Int
+// }
 
 type ReserveData struct {
 	Unbacked                *big.Int
@@ -307,7 +306,7 @@ func (a *AaveV3) getReserveDatas(aggReserveData []IUiPoolDataProviderV3Aggregate
 
 // Returns the market.
 // Assumes lending and borrowing tokens are the same.
-func (a *AaveV3) GetMarkets() ([]*t.ProtocolChain, error) {
+func (a *AaveV3) GetMarkets() ([]*schema.ProtocolChain, error) {
 	log.Printf("Fetching market data for %v...", a.chain)
 	startTime := time.Now()
 
@@ -331,8 +330,8 @@ func (a *AaveV3) GetMarkets() ([]*t.ProtocolChain, error) {
 	}
 
 	// Filter out results for specified symbols
-	var supplyMarkets []*t.MarketInfo
-	var borrowMarkets []*t.MarketInfo
+	var supplyMarkets []*schema.MarketInfo
+	var borrowMarkets []*schema.MarketInfo
 	for i, reserveData := range aggReserveData {
 		if reserveData.IsPaused {
 			continue
@@ -354,32 +353,32 @@ func (a *AaveV3) GetMarkets() ([]*t.ProtocolChain, error) {
 			return nil, fmt.Errorf("failed to convert address to symbol: %v", err)
 		}
 
-		market := &t.MarketInfo{
+		market := &schema.MarketInfo{
 			Protocol:   AaveV3Name,
 			Chain:      a.chain,
 			Token:      symbol,
 			Decimals:   reserveData.Decimals,
 			LTV:        reserveData.BaseLTVasCollateral,
 			PriceInUSD: reserveData.PriceInMarketReferenceCurrency,
-			Params: AaveV3MarketParams{
-				SupplyCapRemaining: supplyCap,
-				TotalVariableDebt:  reserveDatas[i].TotalVariableDebt,
-				TotalStableDebt:    reserveDatas[i].TotalStableDebt,
+			Params: map[string]interface{}{
+				"supplyCapRemaining": supplyCap,
+				"totalVariableDebt":  reserveDatas[i].TotalVariableDebt,
+				"totalStableDebt":    reserveDatas[i].TotalStableDebt,
 
-				ReserveFactor:          reserveData.ReserveFactor,
-				AvailableLiquidity:     reserveData.AvailableLiquidity,
-				AverageStableRate:      reserveData.AverageStableRate,
-				StableRateSlope1:       reserveData.StableRateSlope1,
-				StableRateSlope2:       reserveData.StableRateSlope2,
-				VariableRateSlope1:     reserveData.VariableRateSlope1,
-				VariableRateSlope2:     reserveData.VariableRateSlope2,
-				BaseStableBorrowRate:   reserveData.BaseStableBorrowRate,
-				BaseVariableBorrowRate: reserveData.BaseVariableBorrowRate,
-				OptimalRatio:           reserveData.OptimalUsageRatio,
-				Unbacked:               reserveData.Unbacked,
+				"reserveFactor":          reserveData.ReserveFactor,
+				"availableLiquidity":     reserveData.AvailableLiquidity,
+				"averageStableRate":      reserveData.AverageStableRate,
+				"stableRateSlope1":       reserveData.StableRateSlope1,
+				"stableRateSlope2":       reserveData.StableRateSlope2,
+				"variableRateSlope1":     reserveData.VariableRateSlope1,
+				"variableRateSlope2":     reserveData.VariableRateSlope2,
+				"baseStableBorrowRate":   reserveData.BaseStableBorrowRate,
+				"baseVariableBorrowRate": reserveData.BaseVariableBorrowRate,
+				"optimalRatio":           reserveData.OptimalUsageRatio,
+				"unbacked":               reserveData.Unbacked,
 
-				OptimalStableToTotalDebtRatio: optimalStableToTotalDebtRatios[i],
-				StableRateExcessOffset:        stableRateExcessOffsets[i],
+				"optimalStableToTotalDebtRatio": optimalStableToTotalDebtRatios[i],
+				"stableRateExcessOffset":        stableRateExcessOffsets[i],
 			},
 		}
 		supplyMarkets = append(supplyMarkets, market)
@@ -389,7 +388,7 @@ func (a *AaveV3) GetMarkets() ([]*t.ProtocolChain, error) {
 	log.Printf("Fetched %v lending tokens & %v borrowing tokens", len(supplyMarkets), len(borrowMarkets))
 	log.Printf("Time elapsed: %v", time.Since(startTime))
 
-	return []*t.ProtocolChain{{
+	return []*schema.ProtocolChain{{
 		Protocol:      AaveV3Name,
 		Chain:         a.chain,
 		SupplyMarkets: supplyMarkets,
@@ -397,89 +396,103 @@ func (a *AaveV3) GetMarkets() ([]*t.ProtocolChain, error) {
 	}}, nil
 }
 
-func (*AaveV3) CalcAPY(market *t.MarketInfo, amount *big.Int, isSupply bool) (*big.Int, *big.Int, error) {
-	params, ok := market.Params.(AaveV3MarketParams)
-	if !ok {
-		return nil, nil, fmt.Errorf("failed to cast params to AaveV3MarketParams")
-	}
+func (*AaveV3) CalcAPY(market *schema.MarketInfo, amount *big.Int, isSupply bool) (*big.Int, *big.Int, error) {
+	supplyCapRemaining := market.Params["supplyCapRemaining"].(*big.Int)
+	availableLiquidity := market.Params["availableLiquidity"].(*big.Int)
 
 	// Check for caps
 	actualAmount := amount
-	if isSupply && params.SupplyCapRemaining.Cmp(amount) == -1 {
-		actualAmount = params.SupplyCapRemaining
-	} else if !isSupply && params.AvailableLiquidity.Cmp(amount) == -1 {
-		actualAmount = params.AvailableLiquidity
+	if isSupply && supplyCapRemaining.Cmp(amount) == -1 {
+		actualAmount = supplyCapRemaining
+	} else if !isSupply && availableLiquidity.Cmp(amount) == -1 {
+		actualAmount = availableLiquidity
 	}
 
 	if isSupply {
-		currentLiquidityRate, _, _ := calculateInterestRates(&params, actualAmount, big.NewInt(0))
+		currentLiquidityRate, _, _ := calculateInterestRates(market.Params, actualAmount, big.NewInt(0))
 		return currentLiquidityRate, actualAmount, nil
 	}
-	_, _, currentVariableRate := calculateInterestRates(&params, big.NewInt(0), actualAmount)
+	_, _, currentVariableRate := calculateInterestRates(market.Params, big.NewInt(0), actualAmount)
 	return currentVariableRate, actualAmount, nil
 }
 
 // Default all borrows to variable rate
-func calculateInterestRates(params *AaveV3MarketParams, liquidityAdded, liquidityTaken *big.Int) (currentLiquidityRate, currentStableRate, currentVariableRate *big.Int) {
-	MAX_EXCESS_USAGE_RATIO := new(big.Int).Sub(utils.Ray, params.OptimalRatio)
-	MAX_EXCESS_STABLE_TO_TOTAL_DEBT_RATIO := new(big.Int).Sub(utils.Ray, params.OptimalStableToTotalDebtRatio)
+func calculateInterestRates(params map[string]interface{}, liquidityAdded, liquidityTaken *big.Int) (currentLiquidityRate, currentStableRate, currentVariableRate *big.Int) {
+	totalVariableDebt := params["totalVariableDebt"].(*big.Int)
+	totalStableDebt := params["totalStableDebt"].(*big.Int)
+	reserveFactor := params["reserveFactor"].(*big.Int)
+	availableLiquidity := params["availableLiquidity"].(*big.Int)
+	averageStableRate := params["averageStableRate"].(*big.Int)
+	stableRateSlope1 := params["stableRateSlope1"].(*big.Int)
+	stableRateSlope2 := params["stableRateSlope2"].(*big.Int)
+	variableRateSlope1 := params["variableRateSlope1"].(*big.Int)
+	variableRateSlope2 := params["variableRateSlope2"].(*big.Int)
+	baseStableBorrowRate := params["baseStableBorrowRate"].(*big.Int)
+	baseVariableBorrowRate := params["baseVariableBorrowRate"].(*big.Int)
+	optimalRatio := params["optimalRatio"].(*big.Int)
+	unbacked := params["unbacked"].(*big.Int)
+	optimalStableToTotalDebtRatio := params["optimalStableToTotalDebtRatio"].(*big.Int)
+	stableRateExcessOffset := params["stableRateExcessOffset"].(*big.Int)
 
-	totalVariableDebt := new(big.Int).Add(params.TotalVariableDebt, liquidityTaken)
-	totalDebt := new(big.Int).Add(params.TotalStableDebt, totalVariableDebt)
+	MAX_EXCESS_USAGE_RATIO := new(big.Int).Sub(utils.Ray, optimalRatio)
+	MAX_EXCESS_STABLE_TO_TOTAL_DEBT_RATIO := new(big.Int).Sub(utils.Ray, optimalStableToTotalDebtRatio)
 
-	currentStableRate = new(big.Int).Set(params.BaseStableBorrowRate)
-	currentVariableRate = new(big.Int).Set(params.BaseVariableBorrowRate)
+	newTotalVariableDebt := new(big.Int).Add(totalVariableDebt, liquidityTaken)
+	totalDebt := new(big.Int).Add(totalStableDebt, newTotalVariableDebt)
+
+	currentStableRate = new(big.Int).Set(baseStableBorrowRate)
+	currentVariableRate = new(big.Int).Set(baseVariableBorrowRate)
 
 	stableToTotalDebtRatio := big.NewInt(0)
 	borrowUsageRatio := big.NewInt(0)
 	supplyUsageRatio := big.NewInt(0)
 
 	if totalDebt.Cmp(big.NewInt(0)) != 0 {
-		stableToTotalDebtRatio = utils.RayDiv(params.TotalStableDebt, totalDebt)
-		availableLiquidity := new(big.Int).Add(params.AvailableLiquidity, liquidityAdded)
+		stableToTotalDebtRatio = utils.RayDiv(totalStableDebt, totalDebt)
+		availableLiquidity := new(big.Int).Add(availableLiquidity, liquidityAdded)
 		availableLiquidity.Sub(availableLiquidity, liquidityTaken)
 
 		availableLiquidityPlusDebt := new(big.Int).Add(availableLiquidity, totalDebt)
 		borrowUsageRatio = utils.RayDiv(totalDebt, availableLiquidityPlusDebt)
-		supplyUsageRatio = utils.RayDiv(totalDebt, new(big.Int).Add(availableLiquidityPlusDebt, params.Unbacked))
+		supplyUsageRatio = utils.RayDiv(totalDebt, new(big.Int).Add(availableLiquidityPlusDebt, unbacked))
 	}
 
-	if borrowUsageRatio.Cmp(params.OptimalRatio) == 1 {
-		excessBorrowUsageRatio := new(big.Int).Sub(borrowUsageRatio, params.OptimalRatio)
+	if borrowUsageRatio.Cmp(optimalRatio) == 1 {
+		excessBorrowUsageRatio := new(big.Int).Sub(borrowUsageRatio, optimalRatio)
 		excessBorrowUsageRatio = utils.RayDiv(excessBorrowUsageRatio, MAX_EXCESS_USAGE_RATIO)
 
-		currentStableRate.Add(currentStableRate, params.StableRateSlope1)
-		currentStableRate.Add(currentStableRate, utils.RayMul(params.StableRateSlope2, excessBorrowUsageRatio))
+		currentStableRate.Add(currentStableRate, stableRateSlope1)
+		currentStableRate.Add(currentStableRate, utils.RayMul(stableRateSlope2, excessBorrowUsageRatio))
 
-		currentVariableRate.Add(currentVariableRate, params.VariableRateSlope1)
-		currentVariableRate.Add(currentVariableRate, utils.RayMul(params.VariableRateSlope2, excessBorrowUsageRatio))
+		currentVariableRate.Add(currentVariableRate, variableRateSlope1)
+		currentVariableRate.Add(currentVariableRate, utils.RayMul(variableRateSlope2, excessBorrowUsageRatio))
 	} else {
-		stableRate := utils.RayMul(params.StableRateSlope1, borrowUsageRatio)
-		stableRate = utils.RayDiv(stableRate, params.OptimalRatio)
+		stableRate := utils.RayMul(stableRateSlope1, borrowUsageRatio)
+		stableRate = utils.RayDiv(stableRate, optimalRatio)
 		currentStableRate.Add(currentStableRate, stableRate)
 
-		variableRate := utils.RayMul(params.VariableRateSlope1, borrowUsageRatio)
-		variableRate = utils.RayDiv(variableRate, params.OptimalRatio)
+		variableRate := utils.RayMul(variableRateSlope1, borrowUsageRatio)
+		variableRate = utils.RayDiv(variableRate, optimalRatio)
 		currentVariableRate.Add(currentVariableRate, variableRate)
 	}
 
-	if stableToTotalDebtRatio.Cmp(params.OptimalStableToTotalDebtRatio) == 1 {
-		diff := new(big.Int).Sub(stableToTotalDebtRatio, params.OptimalStableToTotalDebtRatio)
+	if stableToTotalDebtRatio.Cmp(optimalStableToTotalDebtRatio) == 1 {
+		diff := new(big.Int).Sub(stableToTotalDebtRatio, optimalStableToTotalDebtRatio)
 
 		excessStableDebtRatio := utils.RayDiv(diff, MAX_EXCESS_STABLE_TO_TOTAL_DEBT_RATIO)
 
-		currentStableRate.Add(currentStableRate, utils.RayMul(params.StableRateExcessOffset, excessStableDebtRatio))
+		currentStableRate.Add(currentStableRate, utils.RayMul(stableRateExcessOffset, excessStableDebtRatio))
 	}
 
 	overallBorrowRate := getOverallBorrowRate(
-		params.TotalStableDebt,
-		totalVariableDebt,
+		totalStableDebt,
+		newTotalVariableDebt,
 		currentVariableRate,
-		params.AverageStableRate)
+		averageStableRate)
 
 	currentLiquidityRate = utils.RayMul(overallBorrowRate, supplyUsageRatio)
 	currentLiquidityRate = utils.PercentMul(currentLiquidityRate,
-		new(big.Int).Sub(utils.PercentageFactor, params.ReserveFactor))
+		new(big.Int).Sub(utils.PercentageFactor, reserveFactor))
 
 	return
 }
