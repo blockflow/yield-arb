@@ -4,6 +4,19 @@
 
 An API written in Go that allows for the execution of yield arbitrage strategies across multiple blockchains. Aggregates deposit and withdrawal opportunities across multiple protocols and chains to find the most profitable action sets. Calculates effective APYs/cost and adjusts for risk tolerance, base collateral, and liquidity.
 
+```
+Example: Bob has $10,000 USDT. The API found two profitable strategies.
+
+// Total APY = 5%, Gas Cost = $0.05
+1. Supply $10,000 USDT to AaveV3 on Arbitrum for 5% APY.
+
+// Total APY = 7.4%, Gas Cost = $15.00
+1. Supply $10,000 USDT to AaveV3 on Arbitrum for 5% APY.
+2. Borrow $8,000 WETH from AaveV3 on Arbitrum for 3% APY.
+3. Bridge WETH to Ethereum.
+4. Supply $8,000 WETH to CompoundV3 on Ethereum for 6% APY.
+```
+
 Deposits and withdrawals are separated by design to allow for deposit only protocols (ex. staking). Uses chi framework for API. Bridge integration in works.
 
 ## Usage
