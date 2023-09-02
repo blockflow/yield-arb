@@ -1,14 +1,27 @@
 # yield-arb
 
-Lending and borrowing are separated by design to allow for deposit only protocols (ex. staking). Uses chi framework for API.
+## Overview
 
-## Ideas
+An API written in Go that allows for the execution of yield arbitrage strategies across multiple blockchains. Aggregates deposit and withdrawal opportunities across multiple protocols and chains to find the most profitable action sets. Calculates effective APYs/cost and adjusts for risk tolerance, base collateral, and liquidity.
 
- - Create web-hosted front-end (Near BOS, react)
- - Show historical data (The Graph, airstack)
- - Integrate a wallet dApp (walletconnect, metamask)
- - Manual, user signs tx to execute strat
- - Bundle txs/signs using ERC4337 (biconomy)
+Deposits and withdrawals are separated by design to allow for deposit only protocols (ex. staking). Uses chi framework for API. Bridge integration in works.
+
+## Usage
+
+```
+cd cmd/
+go run .
+```
+
+## API
+
+### GET /strats
+
+Returns all strategies sorted by APY in descending order.
+
+### POST /transactions
+
+Returns all transactions required to execute the listed strategies.
 
 ## Packages
 
@@ -26,7 +39,7 @@ Contains all the helper functions and constants. Should not perform any actions.
 
 ### accounts
 
-Contains all the logic relating to wallet management. Provides signers and other wallet interactions required for sending transactions.
+[DEPRECATED in favor of frontend wallet integration.] Contains all the logic relating to wallet management. Provides signers and other wallet interactions required for sending transactions.
 
 ## Add a new protocol
 

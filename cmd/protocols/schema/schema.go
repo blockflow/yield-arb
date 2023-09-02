@@ -2,7 +2,6 @@ package schema
 
 import (
 	"encoding/json"
-	"log"
 	"math/big"
 	"net/http"
 )
@@ -100,9 +99,6 @@ func (m *MarketInfo) UnmarshalJSON(data []byte) error {
 	m.Chain = temp.Chain
 	m.Token = temp.Token
 	m.Params = temp.Params
-
-	b, _ := json.MarshalIndent(temp.Params, "", "  ")
-	log.Print(string(b))
 
 	// Convert string to big.Int
 	m.Decimals = new(big.Int)
